@@ -68,7 +68,6 @@ Ein vollständiges, webbasiertes Besucherverwaltungssystem für Unternehmen. Bes
 | Host-Portal | Gastgeber können sich separat einloggen, Besucher einsehen und Vorregistrierungen erstellen |
 | Audit-Log | 90 Tage Aufbewahrung, Tagesprotokoll-Download, Compliance-Bericht als CSV |
 | Superadmin-Löschrechte | Besucher und Vorregistrierungen dauerhaft aus der Datenbank entfernen |
-| Sperrliste | Gesperrte Personen verwalten (Watchlist) |
 | Rollenverwaltung | superadmin / admin / receptionist / host |
 | GDPR-Datenlöschung | Automatische Anonymisierung nach konfigurierbaren Tagen |
 | abat AG CI | Logo, Mulish-Schrift, Markenfarben durchgängig |
@@ -168,8 +167,7 @@ Brother QL-820NWB (Etikettendrucker)
 │   │   │   ├── users.js             # CRUD Benutzer + Standortzuweisung (superadmin)
 │   │   │   ├── visit-purposes.js    # CRUD Besuchszwecke (GET public)
 │   │   │   ├── visitors.js          # CRUD Besucher + Check-in (standortgefiltert)
-│   │   │   ├── visits.js            # Check-out, Checkout per QR, Namenssuche
-│   │   │   └── watchlist.js         # CRUD Sperrliste
+│   │   │   └── visits.js            # Check-out, Checkout per QR, Namenssuche
 │   │   ├── services/
 │   │   │   ├── audit-log.js         # Log-Schreiben, Cleanup (90 Tage), Dateiliste
 │   │   │   ├── auto-checkout.js     # Täglicher Auto-Checkout per setTimeout
@@ -219,8 +217,7 @@ Brother QL-820NWB (Etikettendrucker)
 │   │       ├── PreRegistration.jsx  # Mit Gruppenregistrierung
 │   │       ├── Reports.jsx
 │   │       ├── Settings.jsx
-│   │       ├── Visitors.jsx         # Tabs: Alle / Angekündigt / Aktiv / Verlassen
-│   │       └── Watchlist.jsx        # Sperrliste
+│   │       └── Visitors.jsx         # Tabs: Alle / Angekündigt / Aktiv / Verlassen
 │   ├── dist/                        # Produktions-Build
 │   └── package.json
 │
@@ -362,19 +359,6 @@ Standardwerte: Besprechung, Lieferung, Interview, Wartung, Sonstiges
 | document_type | TEXT | `nda` / `sonstiges` |
 | signature_path | TEXT | PNG-Dateiname in `/uploads/signatures/` |
 | signed_at | DATETIME | |
-
-#### `watchlist` — Sperrliste
-| Spalte | Typ | Beschreibung |
-|---|---|---|
-| id | INTEGER PK | |
-| first_name | TEXT | |
-| last_name | TEXT | |
-| email | TEXT | |
-| company | TEXT | |
-| reason | TEXT | Sperrgrund |
-| severity | TEXT | `low` / `medium` / `high` |
-| added_by | INTEGER | FK → users |
-| active | INTEGER | Soft-Delete |
 
 ---
 
@@ -525,15 +509,6 @@ Standardwerte: Besprechung, Lieferung, Interview, Wartung, Sonstiges
 | GET | `/visits/:visitId/documents` | Ja | Dokumente abrufen |
 | GET | `/documents/:docId/download` | Ja | Dokument herunterladen |
 
-### Sperrliste (Watchlist)
-
-| Methode | Pfad | Auth | Beschreibung |
-|---|---|---|---|
-| GET | `/watchlist` | Ja | Liste (?active=1) |
-| POST | `/watchlist` | Ja | Person sperren |
-| PUT | `/watchlist/:id` | Ja | Eintrag bearbeiten |
-| DELETE | `/watchlist/:id` | Ja | Sperre aufheben (Soft-Delete) |
-
 ---
 
 ## 7. Frontend & Seiten
@@ -553,7 +528,6 @@ Standardwerte: Besprechung, Lieferung, Interview, Wartung, Sonstiges
 | `/preregistrations` | Vorregistrierung | Ja | Einzel- und Gruppenregistrierung |
 | `/evacuation` | Evakuierung | Ja | Nach Standort gruppiert, Drucklayout |
 | `/reports` | Berichte | Ja (admin+) | Tages-/Monatsberichte, CSV-Export |
-| `/watchlist` | Sperrliste | Ja | Gesperrte Personen verwalten |
 | `/settings` | Einstellungen | Ja (admin+) | Alle Konfigurations-Tabs |
 | `/audit-log` | Audit-Log & Compliance | Ja (superadmin) | Protokoll-Download, Compliance-Bericht |
 | `*` | NotFound | — | 404-Fehlerseite |

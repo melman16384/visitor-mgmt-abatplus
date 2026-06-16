@@ -57,8 +57,6 @@ function initializeDatabase() {
       photo_path TEXT,
       nda_signed INTEGER DEFAULT 0,
       nda_signed_at DATETIME,
-      blacklisted INTEGER DEFAULT 0,
-      blacklist_reason TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -93,19 +91,6 @@ function initializeDatabase() {
       qr_code TEXT UNIQUE,
       status TEXT DEFAULT 'pending',
       notes TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS watchlist (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      first_name TEXT NOT NULL,
-      last_name TEXT NOT NULL,
-      email TEXT,
-      company TEXT,
-      reason TEXT NOT NULL,
-      severity TEXT DEFAULT 'medium',
-      added_by INTEGER,
-      active INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -214,6 +199,16 @@ if (userCount.c === 0) {
   db.prepare('INSERT INTO users (name, email, password_hash, role, active) VALUES (?, ?, ?, ?, 1)')
     .run(name, email, hash, 'superadmin');
   console.log(`[init] Admin-Benutzer erstellt: ${email}`);
+}
+
+// Remove watchlist table and blacklist columns if they still exist
+db.exec('DROP TABLE IF EXISTS watchlist');
+const visitorsInfoBl = db.prepare("PRAGMA table_info(visitors)").all();
+if (visitorsInfoBl.find(c => c.name === 'blacklisted')) {
+  db.exec('ALTER TABLE visitors DROP COLUMN blacklisted');
+}
+if (visitorsInfoBl.find(c => c.name === 'blacklist_reason')) {
+  db.exec('ALTER TABLE visitors DROP COLUMN blacklist_reason');
 }
 
 module.exports = db;

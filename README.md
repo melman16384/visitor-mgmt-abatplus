@@ -33,7 +33,6 @@ Vollständiges, webbasiertes Besucherverwaltungssystem für Unternehmen mit Reac
 - GDPR-konforme automatische Datenanonymisierung
 - Datenschutzerklärung-Unterschrift am Kiosk (Canvas)
 - E-Mail-Benachrichtigungen (STARTTLS / SSL / Keine)
-- Sperrliste (Watchlist) für gesperrte Personen
 
 ## Schnellstart (Entwicklung)
 

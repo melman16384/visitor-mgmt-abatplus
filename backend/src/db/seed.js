@@ -6,7 +6,6 @@ console.log('Seeding database...');
 
 // Clear existing data
 db.exec(`
-  DELETE FROM watchlist;
   DELETE FROM preregistrations;
   DELETE FROM visits;
   DELETE FROM visitors;
@@ -138,15 +137,6 @@ insertPreReg.run('Helga', 'Sommer', 'h.sommer@porsche.de', 'Porsche AG', hosts[1
 insertPreReg.run('Fritz', 'Baumann', 'f.baumann@audi.de', 'Audi AG', hosts[2].lastInsertRowid, loc1.lastInsertRowid, fmtDate(nextWeek), '10:30', 'IT-Demo', 'PRE-' + Date.now() + '-003', 'pending');
 insertPreReg.run('Lotte', 'Keller', 'l.keller@vw.de', 'Volkswagen AG', hosts[4].lastInsertRowid, loc2.lastInsertRowid, fmtDate(yesterday), '11:00', 'Lieferung', 'PRE-' + Date.now() + '-004', 'expired');
 insertPreReg.run('Max', 'Steiner', 'm.steiner@bmw.de', 'BMW AG', hosts[5].lastInsertRowid, loc2.lastInsertRowid, fmtDate(yesterday), '15:00', 'Besprechung', 'PRE-' + Date.now() + '-005', 'checked_in');
-
-// Watchlist
-const insertWatch = db.prepare(`
-  INSERT INTO watchlist (first_name, last_name, email, company, reason, severity, active)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
-`);
-
-insertWatch.run('Franz', 'Müller', 'f.mueller@spam.de', 'Unbekannt', 'Unbefugter Zutrittsversuch am 12.03.2024', 'high', 1);
-insertWatch.run('Rita', 'Schwarz', null, 'Konkurrenz GmbH', 'Industriespionage-Verdacht', 'medium', 1);
 
 console.log('Database seeded successfully!');
 console.log('Login credentials:');

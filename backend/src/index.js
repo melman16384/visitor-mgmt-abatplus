@@ -89,9 +89,6 @@ const settingsRoutes = require('./routes/settings');
 app.use('/api/settings', settingsRoutes);
 
 
-const watchlistRoutes = require('./routes/watchlist');
-app.use('/api/watchlist', watchlistRoutes);
-
 app.use('/api/audit-log', require('./routes/audit-log'));
 app.use('/api/host-portal', loginLimiter, require('./routes/host-portal'));
 
