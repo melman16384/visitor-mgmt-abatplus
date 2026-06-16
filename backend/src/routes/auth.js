@@ -1,0 +1,60 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const db = require('../db/database');
+const { authenticate } = require('../middleware/auth');
+
+const router = express.Router();
+
+// POST /login
+router.post('/login', (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(email);
+  if (!user) return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+
+  const valid = bcrypt.compareSync(password, user.password_hash);
+  if (!valid) return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+
+  const token = jwt.sign(
+    { userId: user.id, role: user.role },
+    process.env.JWT_SECRET || 'secret',
+    { expiresIn: '8h' }
+  );
+
+  const { password_hash, ...userWithoutHash } = user;
+  res.json({ token, user: userWithoutHash });
+});
+
+// GET /me
+router.get('/me', authenticate, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// POST /logout
+router.post('/logout', (req, res) => {
+  res.json({ message: 'Erfolgreich abgemeldet' });
+});
+
+// PUT /change-password
+router.put('/change-password', authenticate, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Aktuelles und neues Passwort erforderlich' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'Neues Passwort muss mindestens 8 Zeichen lang sein' });
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const valid = bcrypt.compareSync(currentPassword, user.password_hash);
+  if (!valid) return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
+
+  const newHash = bcrypt.hashSync(newPassword, 10);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
+  res.json({ message: 'Passwort erfolgreich geändert' });
+});
+
+module.exports = router;

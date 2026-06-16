@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Environment & Secrets
+backend/.env
+.env
+
+# Database (production data)
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# Claude Code settings
+.claude/
+
+# Uploads (visitor photos, signatures, documents)
+backend/uploads/documents/*
+backend/uploads/signatures/*
+!backend/uploads/documents/.gitkeep
+!backend/uploads/signatures/.gitkeep
+
+# Frontend build output
+frontend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

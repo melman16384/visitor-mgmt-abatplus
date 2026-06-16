@@ -1,0 +1,66 @@
+@font-face {
+  font-family: 'Mulish';
+  src: url('/fonts/Mulish-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mulish';
+  src: url('/fonts/Mulish-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Mulish', sans-serif;
+    color: #53565A;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Mulish', sans-serif;
+    font-weight: 700;
+    color: #53565A;
+  }
+}
+
+/* ── Kiosk animations ────────────────────────────────────────────────────── */
+
+@keyframes kioskFadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kioskSlideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes kioskSlideInLeft {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes kioskPopIn {
+  0%   { opacity: 0; transform: scale(0.4); }
+  65%  { transform: scale(1.15); }
+  85%  { transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.kiosk-fade-up       { animation: kioskFadeUp       0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.kiosk-slide-right   { animation: kioskSlideInRight  0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.kiosk-slide-left    { animation: kioskSlideInLeft   0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.kiosk-pop-in        { animation: kioskPopIn         0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+.kiosk-delay-1 { animation-delay: 0.06s; }
+.kiosk-delay-2 { animation-delay: 0.13s; }
+.kiosk-delay-3 { animation-delay: 0.20s; }
+.kiosk-delay-4 { animation-delay: 0.27s; }
+.kiosk-delay-5 { animation-delay: 0.34s; }
