@@ -1,7 +1,7 @@
 const PDFDocument = require('pdfkit');
 
 // A6 = 148×105mm  →  419.53×297.64 pt  (1pt = 1/72 inch)
-async function generateBadge({ visitorName, company, hostName, date, time, badgeNumber, parkingSpot, qrBuffer }) {
+async function generateBadge({ visitorName, company, hostName, date, time, badgeNumber, qrBuffer }) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A6', margin: 0, layout: 'landscape' });
     const chunks = [];
@@ -74,12 +74,6 @@ async function generateBadge({ visitorName, company, hostName, date, time, badge
     lbl('Badge-Nr.', col2X, infoY);
     doc.fontSize(16).fillColor(BLUE).font('Helvetica-Bold')
       .text(badgeNumber || '', col2X, infoY + 8);
-
-    const row2Y = infoY + 48;
-    if (parkingSpot) {
-      lbl('Parkplatz', col1X, row2Y);
-      val(parkingSpot, col1X, row2Y + 10);
-    }
 
     // ── Bottom rule ────────────────────────────────────────────────────────────
     const footY = H - 26;

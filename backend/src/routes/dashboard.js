@@ -16,18 +16,12 @@ router.get('/stats', authenticate, (req, res) => {
   const thisWeekTotal = db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_in_at) >= ?`).get(weekStart).c;
   const thisMonthTotal = db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_in_at) >= ?`).get(monthStart).c;
 
-  const avgRow = db.prepare(`
-    SELECT AVG((julianday(checked_out_at) - julianday(checked_in_at)) * 24 * 60) as avg
-    FROM visits WHERE status = 'completed' AND checked_out_at IS NOT NULL
-  `).get();
-
   res.json({
     todayTotal,
     currentlyIn,
     checkedOutToday,
     thisWeekTotal,
     thisMonthTotal,
-    avgDuration: Math.round(avgRow.avg || 0),
   });
 });
 

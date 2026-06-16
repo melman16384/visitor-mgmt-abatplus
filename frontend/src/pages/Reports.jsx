@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Download, BarChart2, Users, Clock, TrendingUp } from 'lucide-react';
+import { Download, Users, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, parseISO, subDays } from 'date-fns';
 import { de } from 'date-fns/locale';
@@ -27,8 +27,6 @@ export default function Reports() {
 
       // Calculate stats from export data
       const allVisits = exportRes.data;
-      const completed = allVisits.filter(v => v.status === 'completed' && v.duration_minutes);
-      const avgDuration = completed.length ? Math.round(completed.reduce((s, v) => s + v.duration_minutes, 0) / completed.length) : 0;
 
       // Group by day for chart
       const byDay = {};
@@ -38,7 +36,7 @@ export default function Reports() {
       });
       const chartData = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count }));
 
-      setData({ total: allVisits.length, avgDuration, chart: chartData });
+      setData({ total: allVisits.length, chart: chartData });
       setVisits(allVisits.slice(0, 50));
     } catch {
       showToast('Fehler beim Laden der Berichte', 'error');
@@ -109,22 +107,13 @@ export default function Reports() {
 
       {/* Stats */}
       {data && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="bg-blue-50 p-3 rounded-xl"><Users size={20} className="text-blue-600" /></div>
               <div>
                 <p className="text-xs text-gray-500">Gesamtbesuche</p>
                 <p className="text-2xl font-bold text-gray-900">{data.total}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="bg-purple-50 p-3 rounded-xl"><Clock size={20} className="text-purple-600" /></div>
-              <div>
-                <p className="text-xs text-gray-500">Ø Aufenthalt</p>
-                <p className="text-2xl font-bold text-gray-900">{data.avgDuration} Min.</p>
               </div>
             </div>
           </div>
@@ -176,7 +165,7 @@ export default function Reports() {
                 <th className="text-left px-6 py-3">Gastgeber</th>
                 <th className="text-left px-6 py-3">Zweck</th>
                 <th className="text-left px-6 py-3">Eingecheckt</th>
-                <th className="text-left px-6 py-3">Dauer</th>
+                <th className="text-left px-6 py-3">Ausgecheckt</th>
                 <th className="text-left px-6 py-3">Status</th>
               </tr>
             </thead>
@@ -201,7 +190,7 @@ export default function Reports() {
                     {v.checked_in_at ? format(new Date(v.checked_in_at), 'dd.MM.yy HH:mm', { locale: de }) : '–'}
                   </td>
                   <td className="px-6 py-3 text-gray-500">
-                    {v.duration_minutes ? `${v.duration_minutes} Min.` : '–'}
+                    {v.checked_out_at ? format(new Date(v.checked_out_at), 'dd.MM.yy HH:mm', { locale: de }) : '–'}
                   </td>
                   <td className="px-6 py-3">
                     {v.status === 'active'

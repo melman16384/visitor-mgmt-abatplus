@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Printer, RefreshCw, Users, MapPin, Clock, Car } from 'lucide-react';
+import { AlertTriangle, Printer, RefreshCw, Users, MapPin, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import client from '../api/client';
@@ -48,7 +48,6 @@ function LocationSection({ location, startIndex }) {
             <th className="text-left px-5 py-2.5">Gastgeber</th>
             <th className="text-left px-5 py-2.5">Badge</th>
             <th className="text-left px-5 py-2.5">Check-in</th>
-            <th className="text-left px-5 py-2.5 hidden print:table-cell">Kfz</th>
             <th className="text-center px-5 py-2.5 w-16">✓</th>
           </tr>
         </thead>
@@ -67,11 +66,6 @@ function LocationSection({ location, startIndex }) {
                   <Clock size={11} />
                   {v.checked_in_at ? format(new Date(v.checked_in_at), 'HH:mm', { locale: de }) : '–'}
                 </div>
-              </td>
-              <td className="px-5 py-3 hidden print:table-cell text-gray-400 text-xs">
-                {v.license_plate ? (
-                  <span className="flex items-center gap-1"><Car size={11} />{v.license_plate}</span>
-                ) : '–'}
               </td>
               {/* Checkbox: only appears in print */}
               <td className="px-5 py-3 text-center">

@@ -15,7 +15,7 @@ router.get('/system', ...adminOnly, (req, res) => {
 
 // PUT /system — update one or more settings
 router.put('/system', ...adminOnly, (req, res) => {
-  const allowed = ['gdpr_retention_days', 'visitor_email_confirmation', 'printer_enabled', 'printer_ip', 'printer_port', 'smtp_security', 'privacy_policy_text', 'privacy_policy_enabled'];
+  const allowed = ['gdpr_retention_days', 'visitor_email_confirmation', 'printer_enabled', 'printer_ip', 'printer_port', 'smtp_security', 'privacy_policy_text', 'privacy_policy_enabled', 'auto_checkout_enabled', 'auto_checkout_time'];
   const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
   const updateMany = db.transaction((updates) => {
     for (const [key, value] of Object.entries(updates)) {

@@ -3,10 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { requireRole } = require('../middleware/auth');
 const { generateBadge } = require('../services/badge');
 const { generateQR } = require('../services/qrcode');
 const { sendHostNotification, sendVisitorConfirmation } = require('../services/email');
 const { printBadge, testPrinterConnection } = require('../services/label-printer');
+const { log } = require('../services/audit-log');
 
 const router = express.Router();
 
@@ -124,7 +126,7 @@ router.get('/active', authenticate, (req, res) => {
 
 // POST / - create or find visitor + check-in (public for kiosk)
 router.post('/', async (req, res) => {
-  const { first_name, last_name, email, phone, company, host_id, purpose, nda_signed, location_id, notes, expected_checkout, license_plate, parking_spot, signature_base64 } = req.body;
+  const { first_name, last_name, email, phone, company, host_id, purpose, nda_signed, location_id, notes, signature_base64 } = req.body;
 
   if (!first_name || !last_name) {
     return res.status(400).json({ error: 'Vor- und Nachname erforderlich' });
@@ -177,10 +179,10 @@ router.post('/', async (req, res) => {
 
   // Create visit
   const visitResult = db.prepare(`
-    INSERT INTO visits (visitor_id, host_id, location_id, purpose, badge_number, checked_in_at, expected_checkout, notes, status, license_plate, parking_spot, privacy_policy_signed, privacy_policy_signature_path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
+    INSERT INTO visits (visitor_id, host_id, location_id, purpose, badge_number, checked_in_at, notes, status, privacy_policy_signed, privacy_policy_signature_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
   `).run(visitor.id, host_id || null, location_id || null, purpose || null, badgeNumber,
-    new Date().toISOString(), expected_checkout || null, notes || null, license_plate || null, parking_spot || null,
+    new Date().toISOString(), notes || null,
     signaturePath ? 1 : 0, signaturePath);
 
   const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(visitResult.lastInsertRowid);
@@ -197,6 +199,8 @@ router.post('/', async (req, res) => {
   if (emailConfirmSetting?.value === 'true') {
     sendVisitorConfirmation(visitor, visit, host).catch(console.error);
   }
+
+  try { log('CHECKIN', 'Kiosk/Empfang', `Besucher: ${visitor.first_name} ${visitor.last_name}`); } catch {}
 
   res.status(201).json({ visitor, visit });
 });
@@ -250,7 +254,28 @@ router.post('/:id/checkin', authenticate, async (req, res) => {
     if (host) sendHostNotification(host, visitor, visit).catch(console.error);
   }
 
+  try { log('CHECKIN', req.user.name, `Besucher: ${visitor.first_name} ${visitor.last_name}`); } catch {}
+
   res.status(201).json({ visitor, visit });
+});
+
+// DELETE /:id — superadmin only, only if no active visit
+router.delete('/:id', authenticate, requireRole(['superadmin']), (req, res) => {
+  const visitor = db.prepare('SELECT * FROM visitors WHERE id = ?').get(req.params.id);
+  if (!visitor) return res.status(404).json({ error: 'Besucher nicht gefunden' });
+
+  const activeVisit = db.prepare("SELECT id FROM visits WHERE visitor_id = ? AND status = 'active'").get(req.params.id);
+  if (activeVisit) return res.status(409).json({ error: 'Besucher ist noch eingecheckt und kann nicht gelöscht werden' });
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM visit_documents WHERE visit_id IN (SELECT id FROM visits WHERE visitor_id = ?)').run(req.params.id);
+    db.prepare('DELETE FROM visits WHERE visitor_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM visitors WHERE id = ?').run(req.params.id);
+  })();
+
+  try { log('VISITOR_GELÖSCHT', req.user.name, `${visitor.first_name} ${visitor.last_name}`); } catch {}
+
+  res.json({ message: 'Besucher gelöscht' });
 });
 
 // GET /:id/badge/:visitId
@@ -310,7 +335,6 @@ router.post('/:id/print-badge/:visitId', authenticate, async (req, res) => {
       date:        checkinDate.toLocaleDateString('de-DE'),
       time:        checkinDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
       badgeNumber: visit.badge_number,
-      parkingSpot: visit.parking_spot || '',
     });
     res.json({ message: 'Badge gedruckt' });
   } catch (err) {

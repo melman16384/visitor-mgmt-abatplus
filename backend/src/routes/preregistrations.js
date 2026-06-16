@@ -5,6 +5,7 @@ const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
 const { generateQR } = require('../services/qrcode');
 const { sendPreRegistrationQR, sendHostNotification } = require('../services/email');
+const { log } = require('../services/audit-log');
 
 function generateAbatId() {
   return 'ABAT-' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0');
@@ -99,10 +100,10 @@ router.post('/qr/:qrcode/checkin', async (req, res) => {
 
   const badgeNumber = `B-${Date.now().toString().slice(-5)}`;
   const visitResult = db.prepare(`
-    INSERT INTO visits (visitor_id, host_id, location_id, purpose, badge_number, checked_in_at, status, license_plate, privacy_policy_signed, privacy_policy_signature_path)
-    VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+    INSERT INTO visits (visitor_id, host_id, location_id, purpose, badge_number, checked_in_at, status, privacy_policy_signed, privacy_policy_signature_path)
+    VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
   `).run(visitor.id, prereg.host_id, prereg.location_id, prereg.purpose, badgeNumber, new Date().toISOString(),
-    prereg.license_plate || null, signaturePath ? 1 : 0, signaturePath);
+    signaturePath ? 1 : 0, signaturePath);
 
   db.prepare("UPDATE preregistrations SET status = 'checked_in' WHERE id = ?").run(prereg.id);
 
@@ -159,7 +160,7 @@ router.get('/:id', authenticate, (req, res) => {
 // POST / - single registration
 router.post('/', authenticate, async (req, res) => {
   const { visitor_first_name, visitor_last_name, visitor_email, visitor_company,
-    host_id, location_id, expected_date, expected_time, purpose, notes, license_plate, group_id } = req.body;
+    host_id, location_id, expected_date, expected_time, purpose, notes, group_id } = req.body;
 
   if (!visitor_first_name || !visitor_last_name || !expected_date) {
     return res.status(400).json({ error: 'Name und Datum erforderlich' });
@@ -170,11 +171,11 @@ router.post('/', authenticate, async (req, res) => {
   const result = db.prepare(`
     INSERT INTO preregistrations
       (visitor_first_name, visitor_last_name, visitor_email, visitor_company,
-       host_id, location_id, expected_date, expected_time, purpose, qr_code, notes, license_plate, group_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       host_id, location_id, expected_date, expected_time, purpose, qr_code, notes, group_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(visitor_first_name, visitor_last_name, visitor_email || null, visitor_company || null,
     host_id || null, location_id || null, expected_date, expected_time || null,
-    purpose || null, qrCode, notes || null, license_plate || null, group_id || null);
+    purpose || null, qrCode, notes || null, group_id || null);
 
   const prereg = db.prepare('SELECT * FROM preregistrations WHERE id = ?').get(result.lastInsertRowid);
 
@@ -192,6 +193,8 @@ router.post('/', authenticate, async (req, res) => {
       ).catch(console.error);
     } catch (e) { console.error('QR/email error:', e); }
   }
+
+  try { log('VORREGISTRIERUNG', req.user?.name || 'Gastgeber', `${visitor_first_name} ${visitor_last_name}`); } catch {}
 
   res.status(201).json(prereg);
 });
@@ -224,13 +227,13 @@ router.post('/batch', authenticate, async (req, res) => {
       const r = db.prepare(`
         INSERT INTO preregistrations
           (visitor_first_name, visitor_last_name, visitor_email, visitor_company,
-           host_id, location_id, expected_date, expected_time, purpose, qr_code, notes, license_plate, group_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           host_id, location_id, expected_date, expected_time, purpose, qr_code, notes, group_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         g.visitor_first_name, g.visitor_last_name, g.visitor_email || null,
         g.visitor_company || visitor_company || null,
         host_id || null, location_id || null, expected_date, expected_time || null,
-        purpose || null, qrCode, notes || null, g.license_plate || null, groupId
+        purpose || null, qrCode, notes || null, groupId
       );
       return { id: r.lastInsertRowid, qrCode, email: g.visitor_email, name: `${g.visitor_first_name} ${g.visitor_last_name}`, firstName: g.visitor_first_name, lastName: g.visitor_last_name };
     });
@@ -256,26 +259,35 @@ router.post('/batch', authenticate, async (req, res) => {
 // PUT /:id
 router.put('/:id', authenticate, (req, res) => {
   const { visitor_first_name, visitor_last_name, visitor_email, visitor_company,
-    host_id, location_id, expected_date, expected_time, purpose, notes, status, license_plate } = req.body;
+    host_id, location_id, expected_date, expected_time, purpose, notes, status } = req.body;
 
   db.prepare(`
     UPDATE preregistrations SET
       visitor_first_name = ?, visitor_last_name = ?, visitor_email = ?,
       visitor_company = ?, host_id = ?, location_id = ?, expected_date = ?, expected_time = ?,
-      purpose = ?, notes = ?, status = COALESCE(?, status), license_plate = ?
+      purpose = ?, notes = ?, status = COALESCE(?, status)
     WHERE id = ?
   `).run(visitor_first_name, visitor_last_name, visitor_email, visitor_company,
     host_id, location_id, expected_date, expected_time, purpose, notes,
-    status || null, license_plate || null, req.params.id);
+    status || null, req.params.id);
 
   const prereg = db.prepare('SELECT * FROM preregistrations WHERE id = ?').get(req.params.id);
   res.json(prereg);
 });
 
-// DELETE /:id
+// DELETE /:id — superadmin: permanent delete; others: soft cancel
 router.delete('/:id', authenticate, (req, res) => {
-  db.prepare("UPDATE preregistrations SET status = 'cancelled' WHERE id = ?").run(req.params.id);
-  res.json({ message: 'Vorregistrierung storniert' });
+  const prereg = db.prepare('SELECT id FROM preregistrations WHERE id = ?').get(req.params.id);
+  if (!prereg) return res.status(404).json({ error: 'Vorregistrierung nicht gefunden' });
+
+  if (req.user.role === 'superadmin') {
+    db.prepare('DELETE FROM preregistrations WHERE id = ?').run(req.params.id);
+    try { log('VORREGISTRIERUNG_GELÖSCHT', req.user.name, `Vorregistrierung ID ${req.params.id}`); } catch {}
+    res.json({ message: 'Vorregistrierung gelöscht' });
+  } else {
+    db.prepare("UPDATE preregistrations SET status = 'cancelled' WHERE id = ?").run(req.params.id);
+    res.json({ message: 'Vorregistrierung storniert' });
+  }
 });
 
 module.exports = router;

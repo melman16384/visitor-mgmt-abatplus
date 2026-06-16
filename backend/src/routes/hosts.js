@@ -1,6 +1,7 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../db/database');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ router.get('/', (req, res) => {
   }
 
   const rows = db.prepare(`
-    SELECT h.*, l.name as location_name
+    SELECT h.id, h.name, h.email, h.phone, h.department, h.location_id, h.active, h.created_at, l.name as location_name
     FROM hosts h
     LEFT JOIN locations l ON h.location_id = l.id
     WHERE ${where.join(' AND ')}
@@ -34,7 +35,7 @@ router.get('/', (req, res) => {
 // GET /:id
 router.get('/:id', authenticate, (req, res) => {
   const host = db.prepare(`
-    SELECT h.*, l.name as location_name
+    SELECT h.id, h.name, h.email, h.phone, h.department, h.location_id, h.active, h.created_at, l.name as location_name
     FROM hosts h
     LEFT JOIN locations l ON h.location_id = l.id
     WHERE h.id = ?
@@ -53,7 +54,7 @@ router.post('/', authenticate, (req, res) => {
     VALUES (?, ?, ?, ?, ?)
   `).run(name, email, phone || null, department || null, location_id || null);
 
-  const host = db.prepare('SELECT * FROM hosts WHERE id = ?').get(result.lastInsertRowid);
+  const host = db.prepare('SELECT id, name, email, phone, department, location_id, active, created_at FROM hosts WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(host);
 });
 
@@ -65,8 +66,22 @@ router.put('/:id', authenticate, (req, res) => {
     WHERE id = ?
   `).run(name, email, phone || null, department || null, location_id || null, req.params.id);
 
-  const host = db.prepare('SELECT * FROM hosts WHERE id = ?').get(req.params.id);
+  const host = db.prepare('SELECT id, name, email, phone, department, location_id, active, created_at FROM hosts WHERE id = ?').get(req.params.id);
   res.json(host);
+});
+
+// PUT /:id/set-password — superadmin only
+router.put('/:id/set-password', authenticate, requireRole(['superadmin']), (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 8) {
+    return res.status(400).json({ error: 'Passwort muss mindestens 8 Zeichen lang sein' });
+  }
+  const host = db.prepare('SELECT id FROM hosts WHERE id = ?').get(req.params.id);
+  if (!host) return res.status(404).json({ error: 'Gastgeber nicht gefunden' });
+
+  const hash = bcrypt.hashSync(password, 12);
+  db.prepare('UPDATE hosts SET password_hash = ? WHERE id = ?').run(hash, req.params.id);
+  res.json({ message: 'Portal-Passwort gesetzt' });
 });
 
 // DELETE /:id

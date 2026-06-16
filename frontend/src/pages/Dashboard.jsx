@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, UserCheck, UserMinus, Calendar, Clock, LogOut, UserPlus, Search, X, ChevronDown } from 'lucide-react';
+import { Users, UserCheck, UserMinus, Calendar, LogOut, UserPlus, Search, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
@@ -190,8 +190,7 @@ export default function Dashboard() {
         <StatCard title="Besucher heute" value={stats?.todayTotal} icon={Users} color="blue" />
         <StatCard title="Aktuell anwesend" value={stats?.currentlyIn} icon={UserCheck} color="green" />
         <StatCard title="Ausgecheckt" value={stats?.checkedOutToday} icon={UserMinus} color="yellow" />
-        <StatCard title="Diese Woche" value={stats?.thisWeekTotal} icon={Calendar} color="purple"
-          subtitle={`Ø ${stats?.avgDuration || 0} Min. Aufenthalt`} />
+        <StatCard title="Diese Woche" value={stats?.thisWeekTotal} icon={Calendar} color="purple" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -222,7 +221,6 @@ export default function Dashboard() {
             {[
               { label: 'Dieser Monat', value: stats?.thisMonthTotal, icon: Calendar, color: 'text-blue-600' },
               { label: 'Aktuell im Haus', value: stats?.currentlyIn, icon: UserCheck, color: 'text-green-600' },
-              { label: 'Ø Aufenthalt', value: `${stats?.avgDuration || 0} Min.`, icon: Clock, color: 'text-purple-600' },
             ].map(({ label, value, icon: Icon, color }) => (
               <div key={label} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
                 <div className="flex items-center gap-3">

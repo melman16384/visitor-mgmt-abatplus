@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, QrCode, Trash2, ZoomIn, CalendarCheck, UserPlus, Users, X, Car } from 'lucide-react';
+import { Plus, QrCode, Trash2, ZoomIn, CalendarCheck, UserPlus, Users, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
 import Modal from '../components/Modal';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
+import { useAuth } from '../context/AuthContext';
 
 const statusConfig = {
   pending:    { label: 'Ausstehend',  cls: 'bg-yellow-100 text-yellow-700' },
@@ -20,13 +21,13 @@ const DATE_FILTERS = [
   { key: 'week',     label: 'Diese Woche' },
 ];
 
-const emptyGuest = () => ({ visitor_first_name: '', visitor_last_name: '', visitor_email: '', license_plate: '' });
+const emptyGuest = () => ({ visitor_first_name: '', visitor_last_name: '', visitor_email: '' });
 
 function GuestRow({ guest, index, onChange, onRemove, canRemove }) {
   const set = (k, v) => onChange(index, { ...guest, [k]: v });
   return (
     <div className="grid grid-cols-12 gap-2 items-start">
-      <div className="col-span-3">
+      <div className="col-span-4">
         <input
           placeholder="Vorname *"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -35,7 +36,7 @@ function GuestRow({ guest, index, onChange, onRemove, canRemove }) {
           required
         />
       </div>
-      <div className="col-span-3">
+      <div className="col-span-4">
         <input
           placeholder="Nachname *"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -52,17 +53,6 @@ function GuestRow({ guest, index, onChange, onRemove, canRemove }) {
           value={guest.visitor_email}
           onChange={e => set('visitor_email', e.target.value)}
         />
-      </div>
-      <div className="col-span-2">
-        <div className="relative">
-          <Car size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            placeholder="Kennzeichen"
-            className="w-full border border-gray-300 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
-            value={guest.license_plate}
-            onChange={e => set('license_plate', e.target.value.toUpperCase())}
-          />
-        </div>
       </div>
       <div className="col-span-1 flex justify-end pt-1">
         {canRemove && (
@@ -115,10 +105,9 @@ function PreRegForm({ onSubmit, hosts, locations, purposes, loading }) {
 
         {/* Column headers */}
         <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-0.5">
-          <div className="col-span-3">Vorname *</div>
-          <div className="col-span-3">Nachname *</div>
+          <div className="col-span-4">Vorname *</div>
+          <div className="col-span-4">Nachname *</div>
           <div className="col-span-3">E-Mail</div>
-          <div className="col-span-2">Kennzeichen</div>
           <div className="col-span-1" />
         </div>
 
@@ -207,6 +196,8 @@ function PreRegForm({ onSubmit, hosts, locations, purposes, loading }) {
 }
 
 export default function PreRegistration() {
+  const { user } = useAuth();
+  const isSuperadmin = user?.role === 'superadmin';
   const [items, setItems] = useState([]);
   const [hosts, setHosts] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -266,6 +257,17 @@ export default function PreRegistration() {
     }
   };
 
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`Vorregistrierung von „${name}" dauerhaft aus der Datenbank löschen?`)) return;
+    try {
+      await client.delete(`/preregistrations/${id}`);
+      showToast('Vorregistrierung gelöscht');
+      loadData();
+    } catch {
+      showToast('Fehler beim Löschen', 'error');
+    }
+  };
+
   // Track which group_ids are expanded (collapsed by default for groups)
   const groupIds = [...new Set(items.filter(i => i.group_id).map(i => i.group_id))];
 
@@ -299,7 +301,6 @@ export default function PreRegistration() {
               <th className="text-left px-6 py-3">Besucher</th>
               <th className="text-left px-6 py-3">Gastgeber</th>
               <th className="text-left px-6 py-3">Erwartet</th>
-              <th className="text-left px-6 py-3">Kennzeichen</th>
               <th className="text-left px-6 py-3">Zweck</th>
               <th className="text-left px-6 py-3">Status</th>
               <th className="text-left px-6 py-3">QR-Code</th>
@@ -339,13 +340,6 @@ export default function PreRegistration() {
                     <p>{item.expected_date ? format(parseISO(item.expected_date), 'dd.MM.yyyy', { locale: de }) : '–'}</p>
                     {item.expected_time && <p className="text-xs text-gray-400">{item.expected_time} Uhr</p>}
                   </td>
-                  <td className="px-6 py-4">
-                    {item.license_plate ? (
-                      <span className="flex items-center gap-1 text-xs font-mono text-gray-600">
-                        <Car size={11} className="text-gray-400" />{item.license_plate}
-                      </span>
-                    ) : <span className="text-gray-300">–</span>}
-                  </td>
                   <td className="px-6 py-4 text-gray-600">{item.purpose || '–'}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${sc.cls}`}>{sc.label}</span>
@@ -359,8 +353,16 @@ export default function PreRegistration() {
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    {item.status === 'pending' && (
+                    {isSuperadmin ? (
+                      <button
+                        onClick={() => handleDelete(item.id, `${item.visitor_first_name} ${item.visitor_last_name}`)}
+                        title="Dauerhaft löschen"
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <Trash2 size={15} />
+                      </button>
+                    ) : item.status === 'pending' && (
                       <button onClick={() => handleCancel(item.id)}
+                        title="Stornieren"
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Trash2 size={15} />
                       </button>

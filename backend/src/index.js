@@ -1,8 +1,11 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
+const { authenticate } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -12,6 +15,12 @@ const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  contentSecurityPolicy: false, // Managed by nginx
+}));
 
 // Middleware
 const corsOrigins = [
@@ -28,7 +37,23 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(uploadsDir));
+
+// Protected uploads: photos public (used in admin UI), documents/signatures require auth
+app.use('/uploads/photos', express.static(path.join(uploadsDir, 'photos')));
+app.use('/uploads/documents', authenticate, express.static(path.join(uploadsDir, 'documents')));
+app.use('/uploads/signatures', authenticate, express.static(path.join(uploadsDir, 'signatures')));
+
+// Rate limiting on login endpoints
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: { error: 'Zu viele Anmeldeversuche. Bitte in 15 Minuten erneut versuchen.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Audit log service
+const { cleanup: auditCleanup } = require('./services/audit-log');
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -41,7 +66,7 @@ const preregRoutes = require('./routes/preregistrations');
 const locationRoutes = require('./routes/locations');
 const reportRoutes = require('./routes/reports');
 
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', loginLimiter, authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/visitors', visitorRoutes);
 app.use('/api/visits', visitRoutes);
@@ -63,11 +88,12 @@ app.use('/api/users', usersRoutes);
 const settingsRoutes = require('./routes/settings');
 app.use('/api/settings', settingsRoutes);
 
-const parkingRoutes = require('./routes/parking');
-app.use('/api/parking', parkingRoutes);
 
 const watchlistRoutes = require('./routes/watchlist');
 app.use('/api/watchlist', watchlistRoutes);
+
+app.use('/api/audit-log', require('./routes/audit-log'));
+app.use('/api/host-portal', loginLimiter, require('./routes/host-portal'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -89,10 +115,13 @@ app.use((req, res) => {
 
 // Initialize DB and start
 require('./db/database');
+auditCleanup();
+const { scheduleNext } = require('./services/auto-checkout');
 app.listen(PORT, () => {
   console.log(`✓ Besucherverwaltung Backend läuft auf Port ${PORT}`);
   console.log(`  API: http://localhost:${PORT}/api`);
   console.log(`  Umgebung: ${process.env.NODE_ENV || 'development'}`);
+  scheduleNext();
 });
 
 module.exports = app;

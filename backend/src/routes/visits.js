@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { log } = require('../services/audit-log');
 
 const router = express.Router();
 
@@ -74,6 +75,8 @@ router.post('/:id/checkout', authenticate, (req, res) => {
 
   db.prepare(`UPDATE visits SET checked_out_at = ?, status = 'completed' WHERE id = ?`)
     .run(new Date().toISOString(), req.params.id);
+
+  try { log('CHECKOUT', 'System', `Visit-ID: ${req.params.id}`); } catch {}
 
   const updated = db.prepare('SELECT * FROM visits WHERE id = ?').get(req.params.id);
   res.json(updated);

@@ -75,7 +75,7 @@ function buildRasterData(imageData, widthPx, heightPx) {
 
 // ── Label image renderer ───────────────────────────────────────────────────────
 
-async function renderLabelImage({ visitorName, company, hostName, date, time, badgeNumber, parkingSpot }) {
+async function renderLabelImage({ visitorName, company, hostName, date, time, badgeNumber }) {
   const W = PRINT_WIDTH_PX;
   const H = PRINT_HEIGHT_PX;
   const canvas = createCanvas(W, H);
@@ -166,17 +166,6 @@ async function renderLabelImage({ visitorName, company, hostName, date, time, ba
   ctx.fillStyle = '#004B87';
   ctx.fillText(badgeNumber || '', 20, 672);
 
-  // ── Parking spot ─────────────────────────────────────────────────────────────
-  if (parkingSpot) {
-    ctx.font = '26px sans-serif';
-    ctx.fillStyle = '#6b7280';
-    ctx.fillText('PARKPLATZ', 20, 720);
-
-    ctx.font = 'bold 36px sans-serif';
-    ctx.fillStyle = '#374151';
-    ctx.fillText(parkingSpot, 20, 758);
-  }
-
   // ── Footer ───────────────────────────────────────────────────────────────────
   ctx.fillStyle = '#f3f4f6';
   ctx.fillRect(0, H - 60, W, 60);
@@ -212,8 +201,8 @@ function sendToPrinter(printerIp, printerPort, data) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-async function printBadge({ printerIp, printerPort, visitorName, company, hostName, date, time, badgeNumber, parkingSpot }) {
-  const imageData = await renderLabelImage({ visitorName, company, hostName, date, time, badgeNumber, parkingSpot });
+async function printBadge({ printerIp, printerPort, visitorName, company, hostName, date, time, badgeNumber }) {
+  const imageData = await renderLabelImage({ visitorName, company, hostName, date, time, badgeNumber });
   const raster    = buildRasterData(imageData, PRINT_WIDTH_PX, PRINT_HEIGHT_PX);
   await sendToPrinter(printerIp, printerPort, raster);
 }

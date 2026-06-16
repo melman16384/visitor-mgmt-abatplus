@@ -17,8 +17,7 @@ export default function KioskManual() {
 
   const [hosts, setHosts] = useState([]);
   const [purposes, setPurposes] = useState([]);
-  const [parkingSpots, setParkingSpots] = useState([]);
-  const [form, setForm] = useState({ first_name: '', last_name: '', company: '', host_id: '', purpose: '', notes: '', parking_spot: '' });
+  const [form, setForm] = useState({ first_name: '', last_name: '', company: '', host_id: '', purpose: '', notes: '' });
   const [signature, setSignature] = useState(null);
   const [privacyPolicy, setPrivacyPolicy] = useState({ text: '', enabled: false });
   const [result, setResult] = useState(null);
@@ -32,7 +31,6 @@ export default function KioskManual() {
       setPurposes(r.data);
       if (r.data.length > 0) setForm(f => ({ ...f, purpose: r.data[0].name }));
     }).catch(() => {});
-    api.get('/parking').then(r => setParkingSpots(r.data)).catch(() => {});
     api.get('/settings/privacy-policy').then(r => setPrivacyPolicy(r.data)).catch(() => {});
   }, []);
 
@@ -115,12 +113,6 @@ export default function KioskManual() {
             <div>
               <p className="text-sm text-abat-metallic">{t('badgeNumber')}</p>
               <p className="text-lg font-semibold text-abat-dunkelgrau">{result.visit.badge_number}</p>
-            </div>
-          )}
-          {result?.visit?.parking_spot && (
-            <div>
-              <p className="text-sm text-abat-metallic">{t('parkingSpot')}</p>
-              <p className="font-semibold text-abat-dunkelgrau">{result.visit.parking_spot}</p>
             </div>
           )}
         </div>
@@ -240,21 +232,6 @@ export default function KioskManual() {
               {purposes.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
             </select>
           </div>
-
-          {parkingSpots.length > 0 && (
-            <div>
-              <label className="text-sm font-semibold text-abat-dunkelgrau block mb-1">{t('parkingSpot')}</label>
-              <select value={form.parking_spot} onChange={e => setForm(f => ({ ...f, parking_spot: e.target.value }))}
-                className={inp('bg-white border-abat-hellgrau focus:border-abat-blau')}>
-                <option value="">{t('parkingPlaceholder')}</option>
-                {parkingSpots.map(s => (
-                  <option key={s.id} value={s.name} disabled={s.occupied}>
-                    {s.name}{s.occupied ? ` ${t('parkingOccupied')}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
 
           <button type="submit" disabled={loading}
             className="w-full bg-abat-blau text-white py-4 rounded-2xl font-bold text-lg hover:bg-primary-600 disabled:opacity-50 transition-colors mt-2 active:scale-[0.98]">

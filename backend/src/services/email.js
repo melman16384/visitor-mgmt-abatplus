@@ -235,7 +235,6 @@ async function sendVisitorConfirmation(visitor, visit, host) {
     host ? detailRow('Gastgeber', host.name) : '',
     visit.purpose ? detailRow('Besuchszweck', visit.purpose) : '',
     detailRow('Badge-Nr.', `<span style="font-family:'Courier New',monospace;background:#F1F3F5;padding:2px 8px;border-radius:4px;">${visit.badge_number}</span>`),
-    visit.parking_spot ? detailRow('Parkplatz', visit.parking_spot) : '',
   ].join('');
 
   const content = `

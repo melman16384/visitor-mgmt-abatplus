@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, MapPin, Mail, Key, Save, Check, ListChecks, Users, ParkingSquare, ShieldCheck, Eye, EyeOff, Printer, Wifi } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, Mail, Key, Save, Check, ListChecks, Users, ShieldCheck, Eye, EyeOff, Printer, Wifi, Clock } from 'lucide-react';
 import Modal from '../components/Modal';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
@@ -8,8 +8,8 @@ import { useAuth } from '../context/AuthContext';
 const TABS = [
   { key: 'locations', label: 'Standorte', icon: MapPin },
   { key: 'purposes', label: 'Besuchszwecke', icon: ListChecks },
-  { key: 'parking', label: 'Parkplätze', icon: ParkingSquare },
   { key: 'users', label: 'Benutzer', icon: Users, superadminOnly: true },
+  { key: 'auto-checkout', label: 'Auto-Checkout', icon: Clock, superadminOnly: true },
   { key: 'printer', label: 'Etikettendrucker', icon: Printer },
   { key: 'gdpr', label: 'Datenschutz', icon: ShieldCheck },
   { key: 'email', label: 'E-Mail-Einstellungen', icon: Mail },
@@ -220,84 +220,6 @@ function PurposesTab() {
             </div>
             <button type="submit" disabled={submitting}
               className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
-              {submitting ? 'Speichern...' : 'Speichern'}
-            </button>
-          </form>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function ParkingTab() {
-  const [spots, setSpots] = useState([]);
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ name: '' });
-  const [submitting, setSubmitting] = useState(false);
-
-  const load = async () => { const r = await client.get('/parking'); setSpots(r.data); };
-  useEffect(() => { load(); }, []);
-
-  const openAdd = () => { setForm({ name: '' }); setModal('add'); };
-  const openEdit = (s) => { setForm(s); setModal('edit'); };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setSubmitting(true);
-    try {
-      if (modal === 'add') await client.post('/parking', form);
-      else await client.put(`/parking/${form.id}`, form);
-      showToast(modal === 'add' ? 'Parkplatz hinzugefügt' : 'Parkplatz aktualisiert');
-      setModal(null); load();
-    } catch { showToast('Fehler', 'error'); }
-    finally { setSubmitting(false); }
-  };
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{spots.length} Parkplätze</p>
-        <button onClick={openAdd} className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors">
-          <Plus size={16} /> Parkplatz hinzufügen
-        </button>
-      </div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-            <tr>
-              <th className="text-left px-5 py-3">Bezeichnung</th>
-              <th className="text-left px-5 py-3">Status</th>
-              <th className="px-5 py-3"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {spots.map(s => (
-              <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-5 py-4 font-medium text-gray-900">{s.name}</td>
-                <td className="px-5 py-4">
-                  {s.occupied
-                    ? <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">Belegt</span>
-                    : <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Frei</span>}
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-1 justify-end">
-                    <button onClick={() => openEdit(s)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit2 size={14} /></button>
-                    <button onClick={async () => { await client.delete(`/parking/${s.id}`); showToast('Parkplatz entfernt'); load(); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {modal && (
-        <Modal title={modal === 'add' ? 'Parkplatz hinzufügen' : 'Parkplatz bearbeiten'} onClose={() => setModal(null)} size="sm">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bezeichnung *</label>
-              <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
-            </div>
-            <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
               {submitting ? 'Speichern...' : 'Speichern'}
             </button>
           </form>
@@ -573,6 +495,78 @@ function PrinterTab() {
         </button>
       </div>
     </form>
+  );
+}
+
+function AutoCheckoutTab() {
+  const [settings, setSettings] = useState({ auto_checkout_enabled: 'true', auto_checkout_time: '19:00' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    client.get('/settings/system').then(r => {
+      setSettings(s => ({
+        ...s,
+        auto_checkout_enabled: r.data.auto_checkout_enabled ?? 'true',
+        auto_checkout_time: r.data.auto_checkout_time ?? '19:00',
+      }));
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await client.put('/settings/system', settings);
+      showToast('Auto-Checkout gespeichert');
+    } catch { showToast('Fehler beim Speichern', 'error'); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <div className="py-12 text-center text-gray-400">Laden…</div>;
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Automatischer Checkout</h3>
+        <p className="text-xs text-gray-500">Besucher, die sich nicht selbst ausgecheckt haben, werden täglich zu der eingestellten Uhrzeit automatisch ausgecheckt.</p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-900">Auto-Checkout aktivieren</p>
+            <p className="text-xs text-gray-500 mt-0.5">Alle noch aktiven Besuche werden automatisch beendet</p>
+          </div>
+          <button
+            onClick={() => setSettings(s => ({ ...s, auto_checkout_enabled: s.auto_checkout_enabled === 'true' ? 'false' : 'true' }))}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings.auto_checkout_enabled === 'true' ? 'bg-primary-600' : 'bg-gray-200'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${settings.auto_checkout_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <Clock size={14} className="inline mr-1.5 text-gray-400" />
+            Uhrzeit für automatischen Checkout
+          </label>
+          <input
+            type="time"
+            value={settings.auto_checkout_time}
+            onChange={e => setSettings(s => ({ ...s, auto_checkout_time: e.target.value }))}
+            disabled={settings.auto_checkout_enabled !== 'true'}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
+          />
+          <p className="text-xs text-gray-400 mt-1">Standard: 19:00 Uhr</p>
+        </div>
+      </div>
+
+      <button onClick={handleSave} disabled={saving}
+        className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50">
+        <Save size={15} />
+        {saving ? 'Speichern…' : 'Speichern'}
+      </button>
+    </div>
   );
 }
 
@@ -905,8 +899,8 @@ export default function Settings() {
       <div>
         {activeTab === 'locations' && <LocationsTab />}
         {activeTab === 'purposes' && <PurposesTab />}
-        {activeTab === 'parking' && <ParkingTab />}
         {activeTab === 'users' && user?.role === 'superadmin' && <UsersTab />}
+        {activeTab === 'auto-checkout' && user?.role === 'superadmin' && <AutoCheckoutTab />}
         {activeTab === 'printer' && <PrinterTab />}
         {activeTab === 'gdpr' && <GdprTab />}
         {activeTab === 'email' && <EmailTab />}

@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
+const { log } = require('../services/audit-log');
 
 const router = express.Router();
 
@@ -13,16 +14,24 @@ router.post('/login', (req, res) => {
     return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
   }
   const user = db.prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(email);
-  if (!user) return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+  if (!user) {
+    try { log('LOGIN_FAILED', email, 'Benutzer nicht gefunden'); } catch {}
+    return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+  }
 
   const valid = bcrypt.compareSync(password, user.password_hash);
-  if (!valid) return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+  if (!valid) {
+    try { log('LOGIN_FAILED', email, 'Falsches Passwort'); } catch {}
+    return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+  }
 
   const token = jwt.sign(
     { userId: user.id, role: user.role },
     process.env.JWT_SECRET || 'secret',
     { expiresIn: '8h' }
   );
+
+  try { log('LOGIN', email, 'Admin-Login erfolgreich'); } catch {}
 
   const { password_hash, ...userWithoutHash } = user;
   res.json({ token, user: userWithoutHash });
@@ -52,7 +61,7 @@ router.put('/change-password', authenticate, (req, res) => {
   const valid = bcrypt.compareSync(currentPassword, user.password_hash);
   if (!valid) return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
 
-  const newHash = bcrypt.hashSync(newPassword, 10);
+  const newHash = bcrypt.hashSync(newPassword, 12);
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
   res.json({ message: 'Passwort erfolgreich geändert' });
 });

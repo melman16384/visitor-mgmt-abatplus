@@ -11,8 +11,7 @@ router.get('/daily', authenticate, (req, res) => {
 
   const rows = db.prepare(`
     SELECT v.*, vi.first_name, vi.last_name, vi.company, vi.email,
-           h.name as host_name, l.name as location_name,
-           ROUND((julianday(COALESCE(v.checked_out_at, 'now')) - julianday(v.checked_in_at)) * 24 * 60) as duration_minutes
+           h.name as host_name, l.name as location_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
     LEFT JOIN hosts h ON v.host_id = h.id
@@ -42,8 +41,7 @@ router.get('/monthly', authenticate, (req, res) => {
 
   const visits = db.prepare(`
     SELECT v.*, vi.first_name, vi.last_name, vi.company,
-           h.name as host_name,
-           ROUND((julianday(COALESCE(v.checked_out_at, 'now')) - julianday(v.checked_in_at)) * 24 * 60) as duration_minutes
+           h.name as host_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
     LEFT JOIN hosts h ON v.host_id = h.id
@@ -72,13 +70,9 @@ router.get('/monthly', authenticate, (req, res) => {
     GROUP BY date ORDER BY date ASC
   `).all(from, to);
 
-  const avgDuration = visits.filter(v => v.status === 'completed').reduce((sum, v) => sum + (v.duration_minutes || 0), 0) /
-    (visits.filter(v => v.status === 'completed').length || 1);
-
   res.json({
     year, month,
     total: visits.length,
-    avgDuration: Math.round(avgDuration),
     topHosts,
     topCompanies,
     dailyBreakdown: daily,
@@ -95,7 +89,6 @@ router.get('/evacuation', authenticate, (req, res) => {
 
   const rows = db.prepare(`
     SELECT v.id, v.badge_number, v.checked_in_at, v.purpose,
-           v.license_plate, v.parking_spot,
            vi.first_name, vi.last_name, vi.company,
            h.name as host_name, h.phone as host_phone,
            l.id as location_id, l.name as location_name, l.address as location_address
@@ -134,8 +127,7 @@ router.get('/export', authenticate, (req, res) => {
            v.checked_in_at, v.checked_out_at,
            vi.first_name, vi.last_name, vi.company, vi.email,
            h.name as host_name, h.department,
-           l.name as location_name,
-           ROUND((julianday(COALESCE(v.checked_out_at, 'now')) - julianday(v.checked_in_at)) * 24 * 60) as duration_minutes
+           l.name as location_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
     LEFT JOIN hosts h ON v.host_id = h.id
@@ -147,7 +139,7 @@ router.get('/export', authenticate, (req, res) => {
   if (format === 'csv') {
     const headers = ['ID', 'Badge-Nr', 'Vorname', 'Nachname', 'Firma', 'E-Mail',
       'Gastgeber', 'Abteilung', 'Standort', 'Zweck', 'Status',
-      'Eingecheckt', 'Ausgecheckt', 'Dauer (Min)', 'Notizen'];
+      'Eingecheckt', 'Ausgecheckt', 'Notizen'];
 
     const csvLines = [headers.join(';')];
     for (const r of rows) {
@@ -157,7 +149,7 @@ router.get('/export', authenticate, (req, res) => {
         r.status === 'active' ? 'Anwesend' : 'Ausgecheckt',
         r.checked_in_at ? new Date(r.checked_in_at).toLocaleString('de-DE') : '',
         r.checked_out_at ? new Date(r.checked_out_at).toLocaleString('de-DE') : '',
-        r.duration_minutes || '', r.notes || ''
+        r.notes || ''
       ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
     }
 

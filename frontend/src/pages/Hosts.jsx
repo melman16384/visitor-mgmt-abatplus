@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Search, Phone, Mail, Building } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Phone, Mail, Building, Key } from 'lucide-react';
 import Modal from '../components/Modal';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
+import { useAuth } from '../context/AuthContext';
 
 function HostForm({ initial, onSubmit, locations, loading }) {
   const [form, setForm] = useState(initial || { name: '', email: '', phone: '', department: '', location_id: '' });
@@ -60,6 +61,9 @@ export default function Hosts() {
   const [modal, setModal] = useState(null); // null | { mode: 'add'|'edit', host }
   const [submitting, setSubmitting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [pwModal, setPwModal] = useState(null); // host object or null
+  const [pwValue, setPwValue] = useState('');
+  const { user } = useAuth();
 
   const loadHosts = useCallback(async () => {
     setLoading(true);
@@ -112,6 +116,21 @@ export default function Hosts() {
       loadHosts();
     } catch {
       showToast('Fehler beim Löschen', 'error');
+    }
+  };
+
+  const handleSetPassword = async () => {
+    if (!pwValue || pwValue.length < 6) {
+      showToast('Passwort muss mindestens 6 Zeichen lang sein', 'error');
+      return;
+    }
+    try {
+      await client.put(`/hosts/${pwModal.id}/set-password`, { password: pwValue });
+      showToast('Portal-Passwort gesetzt');
+      setPwModal(null);
+      setPwValue('');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler beim Setzen des Passworts', 'error');
     }
   };
 
@@ -191,6 +210,13 @@ export default function Hosts() {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-1 justify-end">
+                    {user?.role === 'superadmin' && (
+                      <button onClick={() => { setPwModal(h); setPwValue(''); }}
+                        title="Portal-Passwort setzen"
+                        className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors">
+                        <Key size={15} />
+                      </button>
+                    )}
                     <button onClick={() => setModal({ mode: 'edit', host: h })}
                       className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                       <Edit2 size={15} />
@@ -227,6 +253,34 @@ export default function Hosts() {
               className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2.5 rounded-lg transition-colors text-sm">
               Deaktivieren
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {pwModal && (
+        <Modal title={`Portal-Passwort setzen: ${pwModal.name}`} onClose={() => { setPwModal(null); setPwValue(''); }} size="sm">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Neues Passwort (min. 6 Zeichen)</label>
+              <input
+                type="password"
+                value={pwValue}
+                onChange={e => setPwValue(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="••••••"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => { setPwModal(null); setPwValue(''); }}
+                className="flex-1 border border-gray-300 text-gray-700 font-medium py-2.5 rounded-lg hover:bg-gray-50 transition-colors text-sm">
+                Abbrechen
+              </button>
+              <button onClick={handleSetPassword}
+                className="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-medium py-2.5 rounded-lg transition-colors text-sm">
+                Passwort setzen
+              </button>
+            </div>
           </div>
         </Modal>
       )}

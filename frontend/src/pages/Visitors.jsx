@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Plus, LogOut, FileText, AlertTriangle, Users, UserCheck, UserX, CalendarClock, Printer } from 'lucide-react';
+import { Search, Plus, LogOut, FileText, Trash2, Users, UserCheck, UserX, CalendarClock, Printer } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
 import Modal from '../components/Modal';
 import DocumentSigning from '../components/DocumentSigning';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
+import { useAuth } from '../context/AuthContext';
 
 const TABS = [
   { key: 'all',       label: 'Alle',               icon: Users },
@@ -45,7 +46,7 @@ function InitialsAvatar({ name }) {
 function VisitorForm({ onSubmit, hosts, purposes, loading }) {
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', phone: '', company: '',
-    host_id: '', purpose: '', notes: '', nda_signed: false, expected_checkout: '',
+    host_id: '', purpose: '', notes: '', nda_signed: false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -100,11 +101,6 @@ function VisitorForm({ onSubmit, hosts, purposes, loading }) {
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Erwartete Abreise</label>
-        <input type="datetime-local" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={form.expected_checkout} onChange={e => set('expected_checkout', e.target.value)} />
-      </div>
-      <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
         <textarea rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optionale Notizen..." />
@@ -123,6 +119,7 @@ function VisitorForm({ onSubmit, hosts, purposes, loading }) {
 }
 
 export default function Visitors() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('all');
   const [visitors, setVisitors] = useState([]);
   const [announced, setAnnounced] = useState([]);
@@ -197,6 +194,17 @@ export default function Visitors() {
       showToast('Fehler beim Auschecken', 'error');
     } finally {
       setCheckingOut(null);
+    }
+  };
+
+  const handleDelete = async (visitorId, name) => {
+    if (!window.confirm(`Besucher "${name}" und alle zugehörigen Besuchsdaten unwiderruflich löschen?`)) return;
+    try {
+      await client.delete(`/visitors/${visitorId}`);
+      showToast(`${name} gelöscht`);
+      loadData();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler beim Löschen', 'error');
     }
   };
 
@@ -367,6 +375,12 @@ export default function Visitors() {
                           <button onClick={() => handleCheckout(v.visit_id)} disabled={checkingOut === v.visit_id}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Auschecken">
                             <LogOut size={15} />
+                          </button>
+                        )}
+                        {user?.role === 'superadmin' && v.visit_status !== 'active' && (
+                          <button onClick={() => handleDelete(v.id, `${v.first_name} ${v.last_name}`)}
+                            className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Besucher löschen">
+                            <Trash2 size={15} />
                           </button>
                         )}
                       </div>

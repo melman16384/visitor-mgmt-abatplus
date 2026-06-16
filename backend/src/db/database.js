@@ -127,13 +127,6 @@ function initializeDatabase() {
       active INTEGER DEFAULT 1
     );
 
-    CREATE TABLE IF NOT EXISTS parking_spots (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      sort_order INTEGER DEFAULT 0,
-      active INTEGER DEFAULT 1
-    );
-
     CREATE TABLE IF NOT EXISTS system_settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -192,12 +185,6 @@ if (!visitorsInfo0.find(c => c.name === 'abat_id')) {
 
 // Add columns to visits if missing
 const visitsInfo = db.prepare("PRAGMA table_info(visits)").all();
-if (!visitsInfo.find(c => c.name === 'license_plate')) {
-  db.exec('ALTER TABLE visits ADD COLUMN license_plate TEXT');
-}
-if (!visitsInfo.find(c => c.name === 'parking_spot')) {
-  db.exec('ALTER TABLE visits ADD COLUMN parking_spot TEXT');
-}
 if (!visitsInfo.find(c => c.name === 'privacy_policy_signed')) {
   db.exec('ALTER TABLE visits ADD COLUMN privacy_policy_signed INTEGER DEFAULT 0');
 }
@@ -205,13 +192,16 @@ if (!visitsInfo.find(c => c.name === 'privacy_policy_signature_path')) {
   db.exec('ALTER TABLE visits ADD COLUMN privacy_policy_signature_path TEXT');
 }
 
-// Add license_plate + group_id to preregistrations if missing
+// Add group_id to preregistrations if missing
 const preregInfo = db.prepare("PRAGMA table_info(preregistrations)").all();
-if (!preregInfo.find(c => c.name === 'license_plate')) {
-  db.exec('ALTER TABLE preregistrations ADD COLUMN license_plate TEXT');
-}
 if (!preregInfo.find(c => c.name === 'group_id')) {
   db.exec('ALTER TABLE preregistrations ADD COLUMN group_id TEXT');
+}
+
+// Add password_hash to hosts if missing
+const hostsInfo = db.prepare("PRAGMA table_info(hosts)").all();
+if (!hostsInfo.find(c => c.name === 'password_hash')) {
+  db.exec('ALTER TABLE hosts ADD COLUMN password_hash TEXT');
 }
 
 // Create initial admin user from env if no users exist yet

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LogIn, LogOut, UserPlus } from 'lucide-react';
+import { LogIn, LogOut } from 'lucide-react';
 import { useKioskLang } from '../context/KioskLangContext';
 
 const FLAG = { de: '🇩🇪', en: '🇬🇧' };
@@ -48,15 +48,6 @@ export default function KioskStart() {
             </div>
           </button>
 
-          <button
-            onClick={() => navigate('/kiosk/manual')}
-            className="kiosk-fade-up kiosk-delay-4 group flex items-center gap-6 bg-white hover:bg-gray-50 border-2 border-abat-hellgrau hover:border-abat-blau text-abat-dunkelgrau rounded-2xl px-8 py-7 transition-all shadow hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]">
-            <div className="bg-abat-hellgrau rounded-xl p-3"><UserPlus size={32} className="text-abat-dunkelgrau" /></div>
-            <div className="text-left">
-              <p className="text-2xl font-bold">{t('firstReg')}</p>
-              <p className="text-abat-metallic text-sm mt-0.5">{t('firstRegSub')}</p>
-            </div>
-          </button>
         </div>
       </div>
 

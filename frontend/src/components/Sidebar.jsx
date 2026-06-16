@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Users, LogIn, UserCheck, CalendarCheck,
-  AlertTriangle, BarChart3, Settings, ChevronLeft, ChevronRight
+  AlertTriangle, BarChart3, Settings, ChevronLeft, ChevronRight, ScrollText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -18,6 +18,7 @@ const navItems = [
 
 const adminItems = [
   { to: '/settings', label: 'Einstellungen', icon: Settings, roles: ['superadmin', 'admin'] },
+  { to: '/audit-log', label: 'Audit-Log', icon: ScrollText, roles: ['superadmin'] },
 ];
 
 export default function Sidebar() {
@@ -63,7 +64,7 @@ export default function Sidebar() {
         {user && (user.role === 'superadmin' || user.role === 'admin') && (
           <div className="mt-4 pt-4 border-t border-white/10 px-2 space-y-1">
             {!collapsed && <p className="px-3 text-xs text-abat-metallic uppercase tracking-wider mb-2">Administration</p>}
-            {adminItems.map(({ to, label, icon: Icon }) => (
+            {adminItems.filter(item => !item.roles || item.roles.includes(user.role)).map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
