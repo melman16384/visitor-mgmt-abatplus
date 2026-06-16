@@ -20,6 +20,8 @@
 
 ## 1. Voraussetzungen
 
+> **Netzwerk-Hinweis (Minimal-Prinzip):** Während der Installation werden `registry.npmjs.org:443`, `deb.nodesource.com:443` und `github.com:443` benötigt. Im laufenden Betrieb gibt es keine externen Abhängigkeiten — nur euer SMTP-Server, ggf. euer AD/LDAP-Server und der Etikettendrucker im LAN. Details: [Netzwerk & Firewall-Freigaben](dokumentation.md#25-netzwerk--firewall-freigaben)
+
 ```bash
 # Node.js 18+ installieren
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -

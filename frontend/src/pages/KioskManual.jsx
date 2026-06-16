@@ -19,6 +19,7 @@ export default function KioskManual() {
   const [hosts, setHosts] = useState([]);
   const [purposes, setPurposes] = useState([]);
   const [form, setForm] = useState({ first_name: '', last_name: '', company: '', host_id: '', purpose: '', notes: '' });
+  const [hostManualName, setHostManualName] = useState('');
   const [signature, setSignature] = useState(null);
   const [privacyPolicy, setPrivacyPolicy] = useState({ text: '', enabled: false });
   const [result, setResult] = useState(null);
@@ -54,11 +55,14 @@ export default function KioskManual() {
     ? 'kiosk-fade-up'
     : dirRef.current === 'forward' ? 'kiosk-slide-right' : 'kiosk-slide-left';
 
+  const isManualHost = form.host_id === '_manual';
+
   const validate = () => {
     const e = {};
     if (!form.first_name.trim()) e.first_name = t('required');
     if (!form.last_name.trim()) e.last_name = t('required');
     if (!form.host_id) e.host_id = t('required');
+    if (isManualHost && !hostManualName.trim()) e.host_id = t('required');
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -76,11 +80,13 @@ export default function KioskManual() {
   const doCheckin = async (sig) => {
     setLoading(true);
     try {
-      const res = await api.post('/visitors', {
+      const payload = {
         ...form,
-        host_id: Number(form.host_id),
+        host_id: isManualHost ? null : Number(form.host_id),
+        host_name_free: isManualHost ? hostManualName.trim() : null,
         signature_base64: sig || null,
-      });
+      };
+      const res = await api.post('/visitors', payload);
       setResult(res.data);
       setCountdown(6);
       go('success');
@@ -117,7 +123,10 @@ export default function KioskManual() {
             </div>
           )}
         </div>
-        <p className="kiosk-fade-up kiosk-delay-4 text-abat-hellblau font-semibold">{t('hostNotified')}</p>
+        {result?.visit?.host_name_free
+          ? <p className="kiosk-fade-up kiosk-delay-4 text-abat-metallic text-sm">{t('hostNotifiedManual')}</p>
+          : <p className="kiosk-fade-up kiosk-delay-4 text-abat-hellblau font-semibold">{t('hostNotified')}</p>
+        }
         <p className="kiosk-fade-up kiosk-delay-5 text-abat-metallic text-sm mt-4">{t('backIn')} {countdown} {t('seconds')}</p>
       </div>
     </div>
@@ -206,11 +215,22 @@ export default function KioskManual() {
 
           <div>
             <label className="text-sm font-semibold text-abat-dunkelgrau block mb-1">{t('host')} *</label>
-            <select value={form.host_id} onChange={e => setForm(f => ({ ...f, host_id: e.target.value }))}
+            <select
+              value={form.host_id}
+              onChange={e => { setForm(f => ({ ...f, host_id: e.target.value })); setHostManualName(''); }}
               className={inp(`bg-white ${errors.host_id ? 'border-red-400' : 'border-abat-hellgrau focus:border-abat-blau'}`)}>
               <option value="">{t('hostPlaceholder')}</option>
               {hosts.map(h => <option key={h.id} value={h.id}>{h.name}{h.department ? ` (${h.department})` : ''}</option>)}
+              <option value="_manual">{t('hostManualOption')}</option>
             </select>
+            {isManualHost && (
+              <input
+                value={hostManualName}
+                onChange={e => setHostManualName(e.target.value)}
+                placeholder={t('hostManualPlaceholder')}
+                className={inp(`mt-2 ${errors.host_id && !hostManualName.trim() ? 'border-red-400' : 'border-abat-hellgrau focus:border-abat-blau'}`)}
+              />
+            )}
             {errors.host_id && <p className="text-red-500 text-xs mt-1">{errors.host_id}</p>}
           </div>
 

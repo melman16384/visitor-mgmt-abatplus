@@ -33,6 +33,7 @@
 22. [Umgebungsvariablen (.env)](#22-umgebungsvariablen-env)
 23. [Wichtige Befehle](#23-wichtige-befehle)
 24. [Fehlerbehebung](#24-fehlerbehebung)
+25. [Netzwerk & Firewall-Freigaben](#25-netzwerk--firewall-freigaben)
 
 ---
 
@@ -1130,6 +1131,58 @@ journalctl -u visitor-mgmt | grep auto-checkout
 ```
 
 Prüfen ob `auto_checkout_enabled = true` in den Einstellungen und ob die Uhrzeit korrekt als `HH:MM` eingetragen ist.
+
+---
+
+## 25. Netzwerk & Firewall-Freigaben
+
+Das System folgt dem Minimal-Prinzip: Es gibt **keine Abhängigkeit von externen CDNs oder Telemetrie-Diensten** zur Laufzeit. Alle npm-Pakete sind lokal installiert, Schriften sind lokal eingebettet.
+
+### Einmalig (Build-/Setup-Zeit)
+
+Diese Verbindungen werden **nur während der Installation** benötigt und können danach gesperrt bleiben.
+
+| Zweck | Domain | Port | Protokoll |
+|---|---|---|---|
+| npm-Pakete installieren (Frontend + Backend) | `registry.npmjs.org` | 443 | HTTPS |
+| Node.js installieren (falls über NodeSource) | `deb.nodesource.com` | 443 | HTTPS |
+| Repository klonen | `github.com` | 443 | HTTPS |
+
+### Laufender Betrieb (dauerhaft freischalten)
+
+| Zweck | Host / Domain | Port | Protokoll | Konfigurierbar? |
+|---|---|---|---|---|
+| SMTP (ausgehende E-Mail) | euer SMTP-Server (z.B. `smtp.firma.de`) | 465 oder 587 | SMTP+SSL/STARTTLS | Ja, in `.env` / Einstellungen |
+| LDAP / Active Directory | euer interner AD-Server | 389 (LDAP) oder 636 (LDAPS) | TCP | Ja, in Einstellungen → LDAP |
+| Etikettendrucker (Brother QL-820NWB) | Drucker-IP im LAN | 9100 | RAW TCP | Ja, in Einstellungen → Drucker |
+
+> **LDAP:** Nur relevant wenn LDAP-Sync aktiviert ist (Einstellungen → LDAP). Der AD-Server ist typischerweise intern und benötigt keine Internet-Freigabe.
+
+### Nicht vorhanden / kein Bedarf
+
+| Was | Warum keine Freigabe nötig |
+|---|---|
+| Google Fonts / Font-CDN | Mulish-Schrift liegt **lokal** unter `/frontend/public/fonts/` |
+| jsDelivr, unpkg, cdnjs | Keine CDN-Script-Einbindungen — alles im Build gebündelt |
+| Telemetrie / Analytics | Keine vorhanden |
+| npm zur Laufzeit | Keine Update-Checks oder Laufzeit-Downloads |
+| `github.com` / `scanapp.org` | Nur als statische `href`-Links im QR-Scanner-UI — werden **nicht** automatisch aufgerufen |
+
+### Zusammenfassung für den Firewall-Admin
+
+```
+# Nur einmalig (Setup):
+registry.npmjs.org:443
+deb.nodesource.com:443
+github.com:443
+
+# Dauerhaft (Laufzeit) — nur intern/konfiguriert:
+<SMTP-Server>:465 oder 587     # E-Mail-Versand
+<AD-Server>:389 oder 636       # LDAP-Sync (optional)
+<Drucker-IP>:9100              # Etikettendrucker (optional, LAN)
+```
+
+Eingehend benötigt der Server nur HTTPS (443) von Cloudflare und ggf. SSH (22) für Administration.
 
 ---
 

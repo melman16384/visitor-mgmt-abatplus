@@ -132,7 +132,7 @@ router.get('/active', authenticate, (req, res) => {
 
 // POST / - create or find visitor + check-in (public for kiosk)
 router.post('/', async (req, res) => {
-  const { first_name, last_name, email, phone, company, host_id, purpose, nda_signed, location_id, notes, signature_base64 } = req.body;
+  const { first_name, last_name, email, phone, company, host_id, host_name_free, purpose, nda_signed, location_id, notes, signature_base64 } = req.body;
 
   if (!first_name || !last_name) {
     return res.status(400).json({ error: 'Vor- und Nachname erforderlich' });
@@ -185,9 +185,9 @@ router.post('/', async (req, res) => {
 
   // Create visit
   const visitResult = db.prepare(`
-    INSERT INTO visits (visitor_id, host_id, location_id, purpose, badge_number, checked_in_at, notes, status, privacy_policy_signed, privacy_policy_signature_path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
-  `).run(visitor.id, host_id || null, location_id || null, purpose || null, badgeNumber,
+    INSERT INTO visits (visitor_id, host_id, host_name_free, location_id, purpose, badge_number, checked_in_at, notes, status, privacy_policy_signed, privacy_policy_signature_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+  `).run(visitor.id, host_id || null, host_name_free || null, location_id || null, purpose || null, badgeNumber,
     new Date().toISOString(), notes || null,
     signaturePath ? 1 : 0, signaturePath);
 

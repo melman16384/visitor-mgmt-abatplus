@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit2, Trash2, MapPin, Mail, Key, Save, Check, ListChecks, Users, ShieldCheck, Eye, EyeOff, Printer, Wifi, Clock, GripVertical } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, Mail, Key, Save, Check, ListChecks, Users, ShieldCheck, Eye, EyeOff, Printer, Wifi, Clock, GripVertical, Server, RefreshCw, PlugZap } from 'lucide-react';
 import Modal from '../components/Modal';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
@@ -11,6 +11,7 @@ const TABS = [
   { key: 'users', label: 'Benutzer', icon: Users, superadminOnly: true },
   { key: 'auto-checkout', label: 'Auto-Checkout', icon: Clock, superadminOnly: true },
   { key: 'printer', label: 'Etikettendrucker', icon: Printer },
+  { key: 'ldap', label: 'LDAP / Active Directory', icon: Server, superadminOnly: true },
   { key: 'gdpr', label: 'Datenschutz', icon: ShieldCheck },
   { key: 'email', label: 'E-Mail-Einstellungen', icon: Mail },
   { key: 'password', label: 'Passwort ändern', icon: Key },
@@ -906,6 +907,184 @@ function PasswordTab() {
   );
 }
 
+function LdapTab() {
+  const [cfg, setCfg] = useState({
+    ldap_enabled: 'false',
+    ldap_url: '',
+    ldap_bind_dn: '',
+    ldap_bind_password: '',
+    ldap_base_dn: '',
+    ldap_filter: '(objectClass=user)',
+    ldap_attr_name: 'displayName',
+    ldap_attr_email: 'mail',
+    ldap_attr_department: 'department',
+    ldap_attr_phone: 'telephoneNumber',
+  });
+  const [showPw, setShowPw] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+
+  useEffect(() => {
+    client.get('/settings/ldap').then(r => setCfg(r.data)).catch(() => {});
+  }, []);
+
+  const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const r = await client.put('/settings/ldap', cfg);
+      setCfg(r.data);
+      showToast('LDAP-Einstellungen gespeichert');
+    } catch { showToast('Fehler beim Speichern', 'error'); }
+    finally { setSaving(false); }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const r = await client.post('/settings/ldap/test');
+      showToast(r.data.message, 'success');
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Verbindung fehlgeschlagen', 'error');
+    } finally { setTesting(false); }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const r = await client.post('/settings/ldap/sync');
+      setSyncResult(r.data);
+      showToast(`${r.data.synced} Gastgeber synchronisiert`);
+    } catch (e) {
+      showToast(e.response?.data?.error || 'Sync fehlgeschlagen', 'error');
+    } finally { setSyncing(false); }
+  };
+
+  const inp = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500';
+  const label = 'block text-sm font-medium text-gray-700 mb-1';
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+
+      {/* Enable toggle */}
+      <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div>
+          <p className="font-semibold text-gray-800 text-sm">LDAP / Active Directory aktivieren</p>
+          <p className="text-xs text-gray-500 mt-0.5">Gastgeber werden aus dem Verzeichnisdienst synchronisiert</p>
+        </div>
+        <button onClick={() => set('ldap_enabled', cfg.ldap_enabled === 'true' ? 'false' : 'true')}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${cfg.ldap_enabled === 'true' ? 'bg-primary-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cfg.ldap_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+        </button>
+      </div>
+
+      {/* Connection */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2"><PlugZap size={15} /> Verbindung</h3>
+        <div>
+          <label className={label}>Server-URL</label>
+          <input value={cfg.ldap_url} onChange={e => set('ldap_url', e.target.value)}
+            placeholder="ldap://dc.firma.de:389 oder ldaps://dc.firma.de:636"
+            className={inp} />
+        </div>
+        <div>
+          <label className={label}>Bind DN (Service-Account)</label>
+          <input value={cfg.ldap_bind_dn} onChange={e => set('ldap_bind_dn', e.target.value)}
+            placeholder="CN=svc-visitor,OU=ServiceAccounts,DC=firma,DC=de"
+            className={inp} />
+        </div>
+        <div>
+          <label className={label}>Bind-Passwort</label>
+          <div className="relative">
+            <input type={showPw ? 'text' : 'password'} value={cfg.ldap_bind_password}
+              onChange={e => set('ldap_bind_password', e.target.value)}
+              placeholder="Passwort des Service-Accounts"
+              className={inp + ' pr-10'} />
+            <button type="button" onClick={() => setShowPw(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Wird verschlüsselt in der Datenbank gespeichert.</p>
+        </div>
+        <button onClick={handleTest} disabled={testing || !cfg.ldap_url}
+          className="flex items-center gap-2 border border-gray-300 hover:border-primary-400 hover:text-primary-700 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-40">
+          <PlugZap size={15} />
+          {testing ? 'Wird getestet…' : 'Verbindung testen'}
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <h3 className="font-semibold text-gray-800 text-sm">Suchabfrage</h3>
+        <div>
+          <label className={label}>Base DN</label>
+          <input value={cfg.ldap_base_dn} onChange={e => set('ldap_base_dn', e.target.value)}
+            placeholder="OU=Users,DC=firma,DC=de"
+            className={inp} />
+        </div>
+        <div>
+          <label className={label}>LDAP-Filter</label>
+          <input value={cfg.ldap_filter} onChange={e => set('ldap_filter', e.target.value)}
+            placeholder="(&(objectClass=user)(extensionAttribute3=VisitorHost))"
+            className={inp} />
+          <p className="text-xs text-gray-400 mt-1">
+            Tipp: Mit <code className="bg-gray-100 px-1 rounded">extensionAttribute1–15</code> lassen sich gezielt nur bestimmte AD-Benutzer auswählen.
+          </p>
+        </div>
+      </div>
+
+      {/* Attribute mapping */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <h3 className="font-semibold text-gray-800 text-sm">Attribut-Zuordnung</h3>
+        <div className="grid grid-cols-2 gap-4">
+          {[
+            { key: 'ldap_attr_name', label: 'Name', placeholder: 'displayName' },
+            { key: 'ldap_attr_email', label: 'E-Mail', placeholder: 'mail' },
+            { key: 'ldap_attr_department', label: 'Abteilung', placeholder: 'department' },
+            { key: 'ldap_attr_phone', label: 'Telefon', placeholder: 'telephoneNumber' },
+          ].map(({ key, label: lbl, placeholder }) => (
+            <div key={key}>
+              <label className={label}>{lbl}</label>
+              <input value={cfg[key]} onChange={e => set(key, e.target.value)}
+                placeholder={placeholder} className={inp} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
+          <Save size={15} />
+          {saving ? 'Wird gespeichert…' : 'Einstellungen speichern'}
+        </button>
+        <button onClick={handleSync} disabled={syncing || cfg.ldap_enabled !== 'true'}
+          className="flex items-center gap-2 border border-gray-300 hover:border-primary-400 hover:text-primary-700 text-gray-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-40">
+          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Synchronisiert…' : 'Hosts jetzt synchronisieren'}
+        </button>
+      </div>
+
+      {syncResult && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">
+          <p className="font-semibold">Synchronisierung abgeschlossen</p>
+          <p className="mt-1">
+            {syncResult.synced} Gastgeber synchronisiert
+            {syncResult.skipped > 0 && ` · ${syncResult.skipped} übersprungen (fehlende E-Mail oder Name)`}
+            {' '}· {syncResult.total} Einträge gesamt gefunden
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('locations');
   const { user } = useAuth();
@@ -938,6 +1117,7 @@ export default function Settings() {
         {activeTab === 'purposes' && <PurposesTab />}
         {activeTab === 'users' && user?.role === 'superadmin' && <UsersTab />}
         {activeTab === 'auto-checkout' && user?.role === 'superadmin' && <AutoCheckoutTab />}
+        {activeTab === 'ldap' && user?.role === 'superadmin' && <LdapTab />}
         {activeTab === 'printer' && <PrinterTab />}
         {activeTab === 'gdpr' && <GdprTab />}
         {activeTab === 'email' && <EmailTab />}

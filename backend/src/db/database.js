@@ -146,6 +146,16 @@ const settingDefaults = {
   smtp_security: 'starttls',
   privacy_policy_text: 'Bitte fügen Sie hier den Text Ihrer Datenschutzerklärung ein (Einstellungen → Datenschutz).',
   privacy_policy_enabled: 'true',
+  ldap_enabled: 'false',
+  ldap_url: '',
+  ldap_bind_dn: '',
+  ldap_bind_password: '',
+  ldap_base_dn: '',
+  ldap_filter: '(objectClass=user)',
+  ldap_attr_name: 'displayName',
+  ldap_attr_email: 'mail',
+  ldap_attr_department: 'department',
+  ldap_attr_phone: 'telephoneNumber',
 };
 const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
 Object.entries(settingDefaults).forEach(([k, v]) => insertSetting.run(k, v));
@@ -176,6 +186,9 @@ if (!visitsInfo.find(c => c.name === 'privacy_policy_signed')) {
 if (!visitsInfo.find(c => c.name === 'privacy_policy_signature_path')) {
   db.exec('ALTER TABLE visits ADD COLUMN privacy_policy_signature_path TEXT');
 }
+if (!visitsInfo.find(c => c.name === 'host_name_free')) {
+  db.exec('ALTER TABLE visits ADD COLUMN host_name_free TEXT');
+}
 
 // Add group_id to preregistrations if missing
 const preregInfo = db.prepare("PRAGMA table_info(preregistrations)").all();
@@ -183,10 +196,13 @@ if (!preregInfo.find(c => c.name === 'group_id')) {
   db.exec('ALTER TABLE preregistrations ADD COLUMN group_id TEXT');
 }
 
-// Add password_hash to hosts if missing
+// Add columns to hosts if missing
 const hostsInfo = db.prepare("PRAGMA table_info(hosts)").all();
 if (!hostsInfo.find(c => c.name === 'password_hash')) {
   db.exec('ALTER TABLE hosts ADD COLUMN password_hash TEXT');
+}
+if (!hostsInfo.find(c => c.name === 'ldap_dn')) {
+  db.exec('ALTER TABLE hosts ADD COLUMN ldap_dn TEXT');
 }
 
 // Create initial admin user from env if no users exist yet
