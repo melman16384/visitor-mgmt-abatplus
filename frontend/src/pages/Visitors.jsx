@@ -7,26 +7,22 @@ import DocumentSigning from '../components/DocumentSigning';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
-
-const TABS = [
-  { key: 'all',       label: 'Alle',               icon: Users },
-  { key: 'announced', label: 'Angekündigt',         icon: CalendarClock },
-  { key: 'active',    label: 'Aktiv',               icon: UserCheck },
-  { key: 'completed', label: 'Bereits verlassen',   icon: UserX },
-];
+import { useTranslation } from 'react-i18next';
 
 function StatusBadge({ visitStatus }) {
-  if (visitStatus === 'active') return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Anwesend</span>;
-  if (visitStatus === 'completed') return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">Verlassen</span>;
+  const { t } = useTranslation();
+  if (visitStatus === 'active') return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">{t('status.active')}</span>;
+  if (visitStatus === 'completed') return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">{t('status.completed')}</span>;
   return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-400">–</span>;
 }
 
 function PreRegStatusBadge({ status }) {
+  const { t } = useTranslation();
   const cfg = {
-    pending:    { label: 'Ausstehend',  cls: 'bg-yellow-100 text-yellow-700' },
-    checked_in: { label: 'Eingecheckt', cls: 'bg-green-100 text-green-700' },
-    expired:    { label: 'Abgelaufen',  cls: 'bg-gray-100 text-gray-500' },
-    cancelled:  { label: 'Storniert',   cls: 'bg-red-100 text-red-700' },
+    pending:    { label: t('status.pending'),   cls: 'bg-yellow-100 text-yellow-700' },
+    checked_in: { label: t('status.checkedIn'), cls: 'bg-green-100 text-green-700' },
+    expired:    { label: t('status.expired'),   cls: 'bg-gray-100 text-gray-500' },
+    cancelled:  { label: t('status.cancelled'), cls: 'bg-red-100 text-red-700' },
   };
   const c = cfg[status] || cfg.pending;
   return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${c.cls}`}>{c.label}</span>;
@@ -44,81 +40,100 @@ function InitialsAvatar({ name }) {
 }
 
 function VisitorForm({ onSubmit, hosts, purposes, loading }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', phone: '', company: '',
     host_id: '', purpose: '', notes: '', nda_signed: false,
   });
+  const [hostManualName, setHostManualName] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const isManualHost = form.host_id === '_manual';
 
   useEffect(() => {
     if (purposes.length > 0 && !form.purpose) set('purpose', purposes[0].name);
   }, [purposes]);
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      ...form,
+      host_id: isManualHost ? null : (form.host_id || null),
+      host_name_free: isManualHost ? hostManualName.trim() : null,
+    });
+  };
+
   return (
-    <form onSubmit={e => { e.preventDefault(); onSubmit(form); }} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Vorname *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.firstName')} *</label>
           <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             value={form.first_name} onChange={e => set('first_name', e.target.value)} required placeholder="Max" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nachname *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.lastName')} *</label>
           <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             value={form.last_name} onChange={e => set('last_name', e.target.value)} required placeholder="Mustermann" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.email')}</label>
           <input type="email" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             value={form.email} onChange={e => set('email', e.target.value)} placeholder="max@firma.de" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.phone')}</label>
           <input type="tel" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+49 30 ..." />
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Unternehmen</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.company')}</label>
         <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           value={form.company} onChange={e => set('company', e.target.value)} placeholder="Beispiel GmbH" />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Gastgeber *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.host')} *</label>
         <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={form.host_id} onChange={e => set('host_id', e.target.value)} required>
-          <option value="">– Gastgeber wählen –</option>
-          {hosts.map(h => <option key={h.id} value={h.id}>{h.name} ({h.department || 'Keine Abteilung'})</option>)}
+          value={form.host_id} onChange={e => { set('host_id', e.target.value); setHostManualName(''); }} required>
+          <option value="">{t('common.selectHost')}</option>
+          {hosts.map(h => <option key={h.id} value={h.id}>{h.name} ({h.department || '–'})</option>)}
+          <option value="_manual">{t('common.manualEntry')}</option>
         </select>
+        {isManualHost && (
+          <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mt-2"
+            value={hostManualName} onChange={e => setHostManualName(e.target.value)}
+            placeholder={t('visitors.form.hostPlaceholder')} required autoFocus />
+        )}
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Besuchszweck</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.purpose')}</label>
         <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           value={form.purpose} onChange={e => set('purpose', e.target.value)}>
           {purposes.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('visitors.form.notes')}</label>
         <textarea rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optionale Notizen..." />
+          value={form.notes} onChange={e => set('notes', e.target.value)} />
       </div>
       <label className="flex items-center gap-3 cursor-pointer">
         <input type="checkbox" className="w-4 h-4 text-primary-600 rounded"
           checked={form.nda_signed} onChange={e => set('nda_signed', e.target.checked)} />
-        <span className="text-sm text-gray-700">NDA / Geheimhaltungsvereinbarung unterschrieben</span>
+        <span className="text-sm text-gray-700">{t('visitors.form.nda')}</span>
       </label>
       <button type="submit" disabled={loading}
         className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50 text-sm">
-        {loading ? 'Wird eingecheckt...' : 'Einchecken'}
+        {loading ? t('common.loading') : t('visitors.form.submit')}
       </button>
     </form>
   );
 }
 
 export default function Visitors() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('all');
   const [visitors, setVisitors] = useState([]);
@@ -137,6 +152,13 @@ export default function Visitors() {
   const [printing, setPrinting] = useState(null);
   const [newVisitId, setNewVisitId] = useState(null);
 
+  const TABS = [
+    { key: 'all',       label: t('visitors.tabs.all'),      icon: Users },
+    { key: 'announced', label: t('visitors.tabs.announced'), icon: CalendarClock },
+    { key: 'active',    label: t('visitors.tabs.active'),   icon: UserCheck },
+    { key: 'completed', label: t('visitors.tabs.left'),     icon: UserX },
+  ];
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -153,11 +175,11 @@ export default function Visitors() {
         setPages(res.data.pages);
       }
     } catch {
-      showToast('Fehler beim Laden', 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, search, page]);
+  }, [activeTab, search, page, t]);
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => {
@@ -170,7 +192,7 @@ export default function Visitors() {
     setSubmitting(true);
     try {
       const res = await client.post('/visitors', form);
-      showToast(`${res.data.visitor.first_name} ${res.data.visitor.last_name} erfolgreich eingecheckt`);
+      showToast(`${res.data.visitor.first_name} ${res.data.visitor.last_name} ${t('visitors.checkedIn')}`);
       if (res.data.visit?.id) {
         setNewVisitId(res.data.visit.id);
       } else {
@@ -178,7 +200,7 @@ export default function Visitors() {
       }
       loadData();
     } catch (err) {
-      showToast(err.response?.data?.error || 'Fehler beim Einchecken', 'error');
+      showToast(err.response?.data?.error || t('common.error'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -188,23 +210,23 @@ export default function Visitors() {
     setCheckingOut(visitId);
     try {
       await client.post(`/visits/${visitId}/checkout`);
-      showToast('Besucher ausgecheckt');
+      showToast(t('visitors.checkedOut'));
       loadData();
     } catch {
-      showToast('Fehler beim Auschecken', 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setCheckingOut(null);
     }
   };
 
   const handleDelete = async (visitorId, name) => {
-    if (!window.confirm(`Besucher "${name}" und alle zugehörigen Besuchsdaten unwiderruflich löschen?`)) return;
+    if (!window.confirm(`${t('visitors.deleteConfirm')} (${name})`)) return;
     try {
       await client.delete(`/visitors/${visitorId}`);
-      showToast(`${name} gelöscht`);
+      showToast(t('visitors.deleted'));
       loadData();
     } catch (err) {
-      showToast(err.response?.data?.error || 'Fehler beim Löschen', 'error');
+      showToast(err.response?.data?.error || t('common.error'), 'error');
     }
   };
 
@@ -216,9 +238,9 @@ export default function Visitors() {
     setPrinting(visitId);
     try {
       await client.post(`/visitors/${visitorId}/print-badge/${visitId}`);
-      showToast('Badge gedruckt');
+      showToast(t('visitors.printBadge'));
     } catch (err) {
-      showToast(err.response?.data?.error || 'Druckfehler', 'error');
+      showToast(err.response?.data?.error || t('common.error'), 'error');
     } finally {
       setPrinting(null);
     }
@@ -230,12 +252,12 @@ export default function Visitors() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Besucher</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{total} {activeTab === 'announced' ? 'Ankündigungen' : 'Besucher'}</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('visitors.title')}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{total} {activeTab === 'announced' ? t('visitors.tabs.announced') : t('visitors.title')}</p>
         </div>
         <button onClick={() => setShowModal(true)}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-sm transition-colors">
-          <Plus size={18} /> Neuer Besucher
+          <Plus size={18} /> {t('visitors.add')}
         </button>
       </div>
 
@@ -258,7 +280,7 @@ export default function Visitors() {
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Suche nach Name, Firma, E-Mail..."
+            placeholder={t('visitors.searchPlaceholder')}
             className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
       )}
@@ -270,11 +292,11 @@ export default function Visitors() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
                 <tr>
-                  <th className="text-left px-6 py-3">Besucher</th>
-                  <th className="text-left px-6 py-3">Gastgeber</th>
-                  <th className="text-left px-6 py-3">Erwartet</th>
-                  <th className="text-left px-6 py-3">Zweck</th>
-                  <th className="text-left px-6 py-3">Status</th>
+                  <th className="text-left px-6 py-3">{t('visitors.table.visitor')}</th>
+                  <th className="text-left px-6 py-3">{t('visitors.table.host')}</th>
+                  <th className="text-left px-6 py-3">{t('preregistrations.table.expected')}</th>
+                  <th className="text-left px-6 py-3">{t('common.purpose')}</th>
+                  <th className="text-left px-6 py-3">{t('common.status')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -283,7 +305,7 @@ export default function Visitors() {
                     <div className="inline-block w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
                   </td></tr>
                 ) : announced.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-16 text-gray-400">Keine Ankündigungen</td></tr>
+                  <tr><td colSpan={5} className="text-center py-16 text-gray-400">{t('visitors.noData')}</td></tr>
                 ) : announced.map(a => (
                   <tr key={a.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
@@ -310,14 +332,14 @@ export default function Visitors() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
                 <tr>
-                  <th className="text-left px-6 py-3">Besucher</th>
-                  <th className="text-left px-6 py-3">abat-ID</th>
-                  <th className="text-left px-6 py-3">Gastgeber</th>
-                  <th className="text-left px-6 py-3">Status</th>
+                  <th className="text-left px-6 py-3">{t('visitors.table.visitor')}</th>
+                  <th className="text-left px-6 py-3">{t('visitors.table.abatId')}</th>
+                  <th className="text-left px-6 py-3">{t('visitors.table.host')}</th>
+                  <th className="text-left px-6 py-3">{t('common.status')}</th>
                   <th className="text-left px-6 py-3">
-                    {activeTab === 'completed' ? 'Ausgecheckt' : 'Eingecheckt'}
+                    {activeTab === 'completed' ? t('visitors.table.checkedOut') : t('visitors.table.checkedIn')}
                   </th>
-                  <th className="text-left px-6 py-3">Badge</th>
+                  <th className="text-left px-6 py-3">{t('visitors.table.badge')}</th>
                   <th className="px-6 py-3"></th>
                 </tr>
               </thead>
@@ -327,7 +349,7 @@ export default function Visitors() {
                     <div className="inline-block w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
                   </td></tr>
                 ) : visitors.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-16 text-gray-400">Keine Besucher gefunden</td></tr>
+                  <tr><td colSpan={7} className="text-center py-16 text-gray-400">{t('visitors.noData')}</td></tr>
                 ) : visitors.map(v => (
                   <tr key={v.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
@@ -361,25 +383,25 @@ export default function Visitors() {
                       <div className="flex items-center gap-1 justify-end">
                         {v.visit_id && v.visit_status === 'active' && (
                           <button onClick={() => handleBadge(v.id, v.visit_id)}
-                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Badge herunterladen">
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title={t('visitors.printBadge')}>
                             <FileText size={15} />
                           </button>
                         )}
                         {v.visit_id && v.visit_status === 'active' && (
                           <button onClick={() => handlePrint(v.id, v.visit_id)} disabled={printing === v.visit_id}
-                            className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50" title="Badge drucken">
+                            className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50" title={t('visitors.printBadge')}>
                             <Printer size={15} className={printing === v.visit_id ? 'animate-pulse' : ''} />
                           </button>
                         )}
                         {v.visit_status === 'active' && v.visit_id && (
                           <button onClick={() => handleCheckout(v.visit_id)} disabled={checkingOut === v.visit_id}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Auschecken">
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title={t('visitors.checkout')}>
                             <LogOut size={15} />
                           </button>
                         )}
                         {user?.role === 'superadmin' && v.visit_status !== 'active' && (
                           <button onClick={() => handleDelete(v.id, `${v.first_name} ${v.last_name}`)}
-                            className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Besucher löschen">
+                            className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title={t('common.delete')}>
                             <Trash2 size={15} />
                           </button>
                         )}
@@ -395,7 +417,7 @@ export default function Visitors() {
         {/* Pagination */}
         {pages > 1 && activeTab !== 'announced' && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-            <p className="text-sm text-gray-500">Seite {page} von {pages}</p>
+            <p className="text-sm text-gray-500">{page} / {pages}</p>
             <div className="flex gap-2">
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-40 transition-colors">
@@ -412,7 +434,7 @@ export default function Visitors() {
 
       {/* New visitor modal */}
       {showModal && !newVisitId && (
-        <Modal title="Neuen Besucher einchecken" onClose={() => setShowModal(false)} size="lg">
+        <Modal title={t('visitors.add')} onClose={() => setShowModal(false)} size="lg">
           <VisitorForm onSubmit={handleCheckin} hosts={hosts} purposes={purposes} loading={submitting} />
         </Modal>
       )}
@@ -428,7 +450,7 @@ export default function Visitors() {
             />
             <button onClick={() => { setShowModal(false); setNewVisitId(null); }}
               className="w-full border-2 border-abat-hellgrau text-abat-dunkelgrau py-2.5 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm">
-              Überspringen
+              {t('common.back')}
             </button>
           </div>
         </Modal>

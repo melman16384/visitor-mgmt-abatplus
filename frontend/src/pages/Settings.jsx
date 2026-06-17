@@ -1,23 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Edit2, Trash2, MapPin, Mail, Key, Save, Check, ListChecks, Users, ShieldCheck, Eye, EyeOff, Printer, Wifi, Clock, GripVertical, Server, RefreshCw, PlugZap } from 'lucide-react';
 import Modal from '../components/Modal';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
 
-const TABS = [
-  { key: 'locations', label: 'Standorte', icon: MapPin },
-  { key: 'purposes', label: 'Besuchszwecke', icon: ListChecks },
-  { key: 'users', label: 'Benutzer', icon: Users, superadminOnly: true },
-  { key: 'auto-checkout', label: 'Auto-Checkout', icon: Clock, superadminOnly: true },
-  { key: 'printer', label: 'Etikettendrucker', icon: Printer },
-  { key: 'ldap', label: 'LDAP / Active Directory', icon: Server, superadminOnly: true },
-  { key: 'gdpr', label: 'Datenschutz', icon: ShieldCheck },
-  { key: 'email', label: 'E-Mail-Einstellungen', icon: Mail },
-  { key: 'password', label: 'Passwort ändern', icon: Key },
-];
-
 function LocationsTab() {
+  const { t } = useTranslation();
   const [locations, setLocations] = useState([]);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: '', address: '', city: '' });
@@ -39,28 +29,28 @@ function LocationsTab() {
     try {
       if (modal === 'add') await client.post('/locations', form);
       else await client.put(`/locations/${form.id}`, form);
-      showToast(modal === 'add' ? 'Standort hinzugefügt' : 'Standort aktualisiert');
+      showToast(modal === 'add' ? t('settings.locations.added') : t('settings.locations.updated'));
       setModal(null);
       load();
-    } catch { showToast('Fehler', 'error'); }
+    } catch { showToast(t('common.error'), 'error'); }
     finally { setSubmitting(false); }
   };
 
   const handleDelete = async (id) => {
     try {
       await client.delete(`/locations/${id}`);
-      showToast('Standort deaktiviert');
+      showToast(t('settings.locations.deactivated'));
       load();
-    } catch { showToast('Fehler', 'error'); }
+    } catch { showToast(t('common.error'), 'error'); }
   };
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{locations.length} Standorte</p>
+        <p className="text-sm text-gray-500">{locations.length} {t('settings.tabs.locations')}</p>
         <button onClick={openAdd}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors">
-          <Plus size={16} /> Standort hinzufügen
+          <Plus size={16} /> {t('settings.locations.add')}
         </button>
       </div>
 
@@ -68,9 +58,9 @@ function LocationsTab() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
             <tr>
-              <th className="text-left px-5 py-3">Name</th>
-              <th className="text-left px-5 py-3">Adresse</th>
-              <th className="text-left px-5 py-3">Stadt</th>
+              <th className="text-left px-5 py-3">{t('settings.locations.name')}</th>
+              <th className="text-left px-5 py-3">{t('settings.locations.address')}</th>
+              <th className="text-left px-5 py-3">{t('settings.locations.city')}</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -104,27 +94,27 @@ function LocationsTab() {
       </div>
 
       {modal && (
-        <Modal title={modal === 'add' ? 'Standort hinzufügen' : 'Standort bearbeiten'}
+        <Modal title={modal === 'add' ? t('settings.locations.addTitle') : t('settings.locations.editTitle')}
           onClose={() => setModal(null)} size="sm">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.locations.name')} *</label>
               <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.locations.address')}</label>
               <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 value={form.address || ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stadt</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.locations.city')}</label>
               <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 value={form.city || ''} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
             </div>
             <button type="submit" disabled={submitting}
               className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
-              {submitting ? 'Speichern...' : 'Speichern'}
+              {submitting ? t('common.loading') : t('common.save')}
             </button>
           </form>
         </Modal>
@@ -134,6 +124,7 @@ function LocationsTab() {
 }
 
 function PurposesTab() {
+  const { t } = useTranslation();
   const [purposes, setPurposes] = useState([]);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ name: '' });
@@ -157,19 +148,19 @@ function PurposesTab() {
     try {
       if (modal === 'add') await client.post('/visit-purposes', form);
       else await client.put(`/visit-purposes/${form.id}`, form);
-      showToast(modal === 'add' ? 'Besuchszweck hinzugefügt' : 'Besuchszweck aktualisiert');
+      showToast(modal === 'add' ? t('settings.purposes.added') : t('settings.purposes.updated'));
       setModal(null);
       load();
-    } catch { showToast('Fehler', 'error'); }
+    } catch { showToast(t('common.error'), 'error'); }
     finally { setSubmitting(false); }
   };
 
   const handleDelete = async (id) => {
     try {
       await client.delete(`/visit-purposes/${id}`);
-      showToast('Besuchszweck entfernt');
+      showToast(t('settings.purposes.deactivated'));
       load();
-    } catch { showToast('Fehler', 'error'); }
+    } catch { showToast(t('common.error'), 'error'); }
   };
 
   const handleDragStart = (id) => { dragId.current = id; };
@@ -195,16 +186,16 @@ function PurposesTab() {
       await client.put('/visit-purposes/reorder', {
         order: withOrder.map(p => ({ id: p.id, sort_order: p.sort_order })),
       });
-    } catch { showToast('Reihenfolge konnte nicht gespeichert werden', 'error'); load(); }
+    } catch { showToast(t('common.error'), 'error'); load(); }
   };
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{purposes.length} Besuchszwecke · Reihenfolge per Drag &amp; Drop ändern</p>
+        <p className="text-sm text-gray-500">{purposes.length} {t('settings.tabs.purposes')} · {t('settings.purposes.dragHint')}</p>
         <button onClick={openAdd}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors">
-          <Plus size={16} /> Zweck hinzufügen
+          <Plus size={16} /> {t('settings.purposes.add')}
         </button>
       </div>
 
@@ -213,7 +204,7 @@ function PurposesTab() {
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
             <tr>
               <th className="w-8 px-3 py-3"></th>
-              <th className="text-left px-3 py-3">Bezeichnung</th>
+              <th className="text-left px-3 py-3">{t('settings.purposes.name')}</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -248,17 +239,17 @@ function PurposesTab() {
       </div>
 
       {modal && (
-        <Modal title={modal === 'add' ? 'Besuchszweck hinzufügen' : 'Besuchszweck bearbeiten'}
+        <Modal title={modal === 'add' ? t('settings.purposes.addTitle') : t('settings.purposes.editTitle')}
           onClose={() => setModal(null)} size="sm">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bezeichnung *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.purposes.name')} *</label>
               <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required autoFocus />
             </div>
             <button type="submit" disabled={submitting}
               className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
-              {submitting ? 'Speichern...' : 'Speichern'}
+              {submitting ? t('common.loading') : t('common.save')}
             </button>
           </form>
         </Modal>
@@ -267,9 +258,9 @@ function PurposesTab() {
   );
 }
 
-const ROLE_LABELS = { superadmin: 'Superadmin', admin: 'Admin', receptionist: 'Empfang' };
-
 function UsersTab() {
+  const { t } = useTranslation();
+  const ROLE_LABELS = { superadmin: t('roles.superadmin'), admin: t('roles.admin'), receptionist: t('roles.receptionist') };
   const [users, setUsers] = useState([]);
   const [allLocations, setAllLocations] = useState([]);
   const [modal, setModal] = useState(null);
@@ -294,40 +285,40 @@ function UsersTab() {
     try {
       if (modal === 'add') await client.post('/users', form);
       else await client.put(`/users/${form.id}`, form);
-      showToast(modal === 'add' ? 'Benutzer erstellt' : 'Benutzer aktualisiert');
+      showToast(modal === 'add' ? t('settings.users.created') : t('settings.users.updated'));
       setModal(null); load();
-    } catch (err) { showToast(err.response?.data?.error || 'Fehler', 'error'); }
+    } catch (err) { showToast(err.response?.data?.error || t('common.error'), 'error'); }
     finally { setSubmitting(false); }
   };
 
   const handleDeactivate = async (id) => {
-    try { await client.delete(`/users/${id}`); showToast('Benutzer deaktiviert'); load(); }
-    catch (err) { showToast(err.response?.data?.error || 'Fehler', 'error'); }
+    try { await client.delete(`/users/${id}`); showToast(t('settings.users.deactivated')); load(); }
+    catch (err) { showToast(err.response?.data?.error || t('common.error'), 'error'); }
   };
 
   const handleResetPassword = async () => {
-    if (!resetPw.password || resetPw.password.length < 8) { showToast('Mindestens 8 Zeichen', 'error'); return; }
-    try { await client.post(`/users/${resetPw.userId}/reset-password`, { password: resetPw.password }); showToast('Passwort zurückgesetzt'); setResetPw({ userId: null, password: '' }); }
-    catch { showToast('Fehler', 'error'); }
+    if (!resetPw.password || resetPw.password.length < 8) { showToast(t('common.error'), 'error'); return; }
+    try { await client.post(`/users/${resetPw.userId}/reset-password`, { password: resetPw.password }); showToast(t('settings.users.passwordReset')); setResetPw({ userId: null, password: '' }); }
+    catch { showToast(t('common.error'), 'error'); }
   };
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{users.length} Benutzer</p>
+        <p className="text-sm text-gray-500">{users.length} {t('settings.tabs.users')}</p>
         <button onClick={openAdd} className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors">
-          <Plus size={16} /> Benutzer hinzufügen
+          <Plus size={16} /> {t('settings.users.add')}
         </button>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
             <tr>
-              <th className="text-left px-5 py-3">Name</th>
-              <th className="text-left px-5 py-3">E-Mail</th>
-              <th className="text-left px-5 py-3">Rolle</th>
-              <th className="text-left px-5 py-3">Standorte</th>
-              <th className="text-left px-5 py-3">Status</th>
+              <th className="text-left px-5 py-3">{t('settings.users.name')}</th>
+              <th className="text-left px-5 py-3">{t('settings.users.email')}</th>
+              <th className="text-left px-5 py-3">{t('common.role')}</th>
+              <th className="text-left px-5 py-3">{t('settings.users.locations')}</th>
+              <th className="text-left px-5 py-3">{t('common.status')}</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -343,7 +334,7 @@ function UsersTab() {
                 </td>
                 <td className="px-5 py-4">
                   {(u.location_ids || []).length === 0 ? (
-                    <span className="text-xs text-gray-400">Alle</span>
+                    <span className="text-xs text-gray-400">{t('common.all')}</span>
                   ) : (
                     <div className="flex flex-wrap gap-1">
                       {(u.location_ids || []).map(lid => {
@@ -356,7 +347,7 @@ function UsersTab() {
                   )}
                 </td>
                 <td className="px-5 py-4">
-                  {u.active ? <span className="text-green-600 text-xs font-semibold">Aktiv</span> : <span className="text-gray-400 text-xs font-semibold">Inaktiv</span>}
+                  {u.active ? <span className="text-green-600 text-xs font-semibold">{t('common.active')}</span> : <span className="text-gray-400 text-xs font-semibold">{t('common.inactive')}</span>}
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-1 justify-end">
@@ -374,9 +365,9 @@ function UsersTab() {
       </div>
 
       {modal && (
-        <Modal title={modal === 'add' ? 'Benutzer hinzufügen' : 'Benutzer bearbeiten'} onClose={() => setModal(null)} size="sm">
+        <Modal title={modal === 'add' ? t('settings.users.addTitle') : t('settings.users.editTitle')} onClose={() => setModal(null)} size="sm">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {[{ k: 'name', l: 'Name' }, { k: 'email', l: 'E-Mail', t: 'email' }].map(({ k, l, t: type }) => (
+            {[{ k: 'name', l: t('settings.users.name') }, { k: 'email', l: t('settings.users.email'), t: 'email' }].map(({ k, l, t: type }) => (
               <div key={k}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{l} *</label>
                 <input type={type || 'text'} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -385,7 +376,7 @@ function UsersTab() {
             ))}
             {modal === 'add' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Passwort * (min. 8 Zeichen)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.users.password')} * ({t('settings.users.passwordHint')})</label>
                 <div className="relative">
                   <input type={showPw ? 'text' : 'password'} className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required minLength={8} />
@@ -396,7 +387,7 @@ function UsersTab() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Rolle</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.users.role')}</label>
               <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value, location_ids: [] }))}>
                 {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -404,11 +395,10 @@ function UsersTab() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Standort-Zugriff
-                {form.role !== 'receptionist' && <span className="ml-2 text-xs text-gray-400 font-normal">(nur für Empfang relevant)</span>}
+                {t('settings.users.locations')}
               </label>
               {allLocations.length === 0 ? (
-                <p className="text-xs text-gray-400">Keine Standorte angelegt</p>
+                <p className="text-xs text-gray-400">{t('settings.locations.noData')}</p>
               ) : (
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto">
                   {allLocations.filter(l => l.active).map(loc => (
@@ -431,34 +421,32 @@ function UsersTab() {
                 </div>
               )}
               <p className="text-xs text-gray-400 mt-1">
-                {(form.location_ids || []).length === 0
-                  ? 'Kein Filter — Benutzer sieht alle Standorte'
-                  : `Zugriff auf ${(form.location_ids || []).length} Standort(e) beschränkt`}
+                {(form.location_ids || []).length === 0 ? t('settings.users.noLocationFilter') : ''}
               </p>
             </div>
             {modal === 'edit' && (
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={!!form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} className="w-4 h-4 text-primary-600 rounded" />
-                <span className="text-sm text-gray-700">Benutzer aktiv</span>
+                <span className="text-sm text-gray-700">{t('settings.users.active')}</span>
               </label>
             )}
             <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
-              {submitting ? 'Speichern...' : 'Speichern'}
+              {submitting ? t('common.loading') : t('common.save')}
             </button>
           </form>
         </Modal>
       )}
 
       {resetPw.userId && (
-        <Modal title="Passwort zurücksetzen" onClose={() => setResetPw({ userId: null, password: '' })} size="sm">
+        <Modal title={t('settings.users.resetPwTitle')} onClose={() => setResetPw({ userId: null, password: '' })} size="sm">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Neues Passwort (min. 8 Zeichen)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.users.newPw')}</label>
               <input type="password" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 value={resetPw.password} onChange={e => setResetPw(r => ({ ...r, password: e.target.value }))} autoFocus />
             </div>
             <button onClick={handleResetPassword} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm">
-              Passwort zurücksetzen
+              {t('settings.users.resetPw')}
             </button>
           </div>
         </Modal>
@@ -468,6 +456,7 @@ function UsersTab() {
 }
 
 function PrinterTab() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState({ printer_enabled: 'false', printer_ip: '', printer_port: '9100' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -479,19 +468,19 @@ function PrinterTab() {
 
   const handleSave = async (e) => {
     e.preventDefault(); setSaving(true);
-    try { const r = await client.put('/settings/system', settings); setSettings(r.data); showToast('Drucker-Einstellungen gespeichert'); }
-    catch { showToast('Fehler', 'error'); }
+    try { const r = await client.put('/settings/system', settings); setSettings(r.data); showToast(t('settings.printer.saved')); }
+    catch { showToast(t('common.error'), 'error'); }
     finally { setSaving(false); }
   };
 
   const handleTest = async () => {
     setTesting(true);
-    try { await client.post('/visitors/printer-test'); showToast('Verbindung erfolgreich — Drucker antwortet'); }
-    catch (err) { showToast(err.response?.data?.error || 'Verbindung fehlgeschlagen', 'error'); }
+    try { await client.post('/visitors/printer-test'); showToast(t('settings.printer.testSuccess')); }
+    catch (err) { showToast(err.response?.data?.error || t('settings.printer.testError'), 'error'); }
     finally { setTesting(false); }
   };
 
-  if (loading) return <div className="text-gray-400 text-sm">Lade...</div>;
+  if (loading) return <div className="text-gray-400 text-sm">{t('common.loading')}</div>;
 
   return (
     <form onSubmit={handleSave} className="space-y-6 max-w-lg">
@@ -503,11 +492,11 @@ function PrinterTab() {
         <input type="checkbox" className="w-4 h-4 text-primary-600 rounded"
           checked={settings.printer_enabled === 'true'}
           onChange={e => setSettings(s => ({ ...s, printer_enabled: e.target.checked ? 'true' : 'false' }))} />
-        <span className="text-sm font-medium text-gray-700">Etikettendrucker aktivieren</span>
+        <span className="text-sm font-medium text-gray-700">{t('settings.printer.enable')}</span>
       </label>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">IP-Adresse des Druckers *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.printer.ip')} *</label>
         <input type="text" placeholder="z.B. 192.168.1.100"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
           value={settings.printer_ip} onChange={e => setSettings(s => ({ ...s, printer_ip: e.target.value }))} />
@@ -515,7 +504,7 @@ function PrinterTab() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.printer.port')}</label>
         <input type="number" min="1" max="65535"
           className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono"
           value={settings.printer_port} onChange={e => setSettings(s => ({ ...s, printer_port: e.target.value }))} />
@@ -525,11 +514,11 @@ function PrinterTab() {
       <div className="flex gap-3">
         <button type="submit" disabled={saving}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors text-sm disabled:opacity-50">
-          <Save size={15} /> {saving ? 'Speichern...' : 'Speichern'}
+          <Save size={15} /> {saving ? t('common.loading') : t('settings.printer.save')}
         </button>
         <button type="button" onClick={handleTest} disabled={testing || !settings.printer_ip}
           className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors text-sm disabled:opacity-40">
-          <Wifi size={15} /> {testing ? 'Verbinde...' : 'Verbindung testen'}
+          <Wifi size={15} /> {testing ? t('common.loading') : t('settings.printer.test')}
         </button>
       </div>
     </form>
@@ -537,6 +526,7 @@ function PrinterTab() {
 }
 
 function AutoCheckoutTab() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState({ auto_checkout_enabled: 'true', auto_checkout_time: '19:00' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -555,25 +545,24 @@ function AutoCheckoutTab() {
     setSaving(true);
     try {
       await client.put('/settings/system', settings);
-      showToast('Auto-Checkout gespeichert');
-    } catch { showToast('Fehler beim Speichern', 'error'); }
+      showToast(t('settings.autoCheckout.saved'));
+    } catch { showToast(t('common.error'), 'error'); }
     finally { setSaving(false); }
   };
 
-  if (loading) return <div className="py-12 text-center text-gray-400">Laden…</div>;
+  if (loading) return <div className="py-12 text-center text-gray-400">{t('common.loading')}</div>;
 
   return (
     <div className="space-y-6 max-w-lg">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-1">Automatischer Checkout</h3>
-        <p className="text-xs text-gray-500">Besucher, die sich nicht selbst ausgecheckt haben, werden täglich zu der eingestellten Uhrzeit automatisch ausgecheckt.</p>
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">{t('settings.autoCheckout.title')}</h3>
+        <p className="text-xs text-gray-500">{t('settings.autoCheckout.description')}</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-900">Auto-Checkout aktivieren</p>
-            <p className="text-xs text-gray-500 mt-0.5">Alle noch aktiven Besuche werden automatisch beendet</p>
+            <p className="text-sm font-medium text-gray-900">{t('settings.autoCheckout.enable')}</p>
           </div>
           <button
             onClick={() => setSettings(s => ({ ...s, auto_checkout_enabled: s.auto_checkout_enabled === 'true' ? 'false' : 'true' }))}
@@ -586,7 +575,7 @@ function AutoCheckoutTab() {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
             <Clock size={14} className="inline mr-1.5 text-gray-400" />
-            Uhrzeit für automatischen Checkout
+            {t('settings.autoCheckout.timeLabel')}
           </label>
           <input
             type="time"
@@ -602,13 +591,14 @@ function AutoCheckoutTab() {
       <button onClick={handleSave} disabled={saving}
         className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50">
         <Save size={15} />
-        {saving ? 'Speichern…' : 'Speichern'}
+        {saving ? t('common.loading') : t('settings.autoCheckout.save')}
       </button>
     </div>
   );
 }
 
 function GdprTab() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState({
     gdpr_retention_days: '365', visitor_email_confirmation: 'true',
     privacy_policy_text: '', privacy_policy_enabled: 'true',
@@ -624,20 +614,20 @@ function GdprTab() {
 
   const handleSave = async (e) => {
     e.preventDefault(); setSaving(true);
-    try { const r = await client.put('/settings/system', settings); setSettings(r.data); showToast('Einstellungen gespeichert'); }
-    catch { showToast('Fehler', 'error'); }
+    try { const r = await client.put('/settings/system', settings); setSettings(r.data); showToast(t('settings.gdpr.saved')); }
+    catch { showToast(t('common.error'), 'error'); }
     finally { setSaving(false); }
   };
 
   const handleCleanup = async () => {
-    if (!window.confirm(`Besucherdaten älter als ${settings.gdpr_retention_days} Tage wirklich anonymisieren?`)) return;
+    if (!window.confirm(t('settings.gdpr.cleanupConfirm'))) return;
     setCleaning(true);
-    try { const r = await client.post('/settings/gdpr/cleanup'); setLastResult(r.data); showToast(`${r.data.anonymized} Einträge anonymisiert`); }
-    catch { showToast('Fehler', 'error'); }
+    try { const r = await client.post('/settings/gdpr/cleanup'); setLastResult(r.data); showToast(t('settings.gdpr.cleanupDone')); }
+    catch { showToast(t('common.error'), 'error'); }
     finally { setCleaning(false); }
   };
 
-  if (loading) return <div className="text-gray-400 text-sm">Lade...</div>;
+  if (loading) return <div className="text-gray-400 text-sm">{t('common.loading')}</div>;
 
   return (
     <form onSubmit={handleSave} className="space-y-6 max-w-lg">
@@ -646,7 +636,7 @@ function GdprTab() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Aufbewahrungsfrist (Tage)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.gdpr.retention')}</label>
         <input type="number" min="1" max="3650"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           value={settings.gdpr_retention_days}
@@ -655,7 +645,7 @@ function GdprTab() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">E-Mail-Bestätigung an Besucher</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">{t('settings.gdpr.emailConfirm')}</label>
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" className="w-4 h-4 text-primary-600 rounded"
             checked={settings.visitor_email_confirmation === 'true'}
@@ -676,7 +666,7 @@ function GdprTab() {
             onChange={e => setSettings(s => ({ ...s, privacy_policy_enabled: e.target.checked ? 'true' : 'false' }))} />
           <span className="text-sm text-gray-700">Datenschutzerklärung beim Kiosk-Check-in einblenden und Unterschrift verlangen</span>
         </label>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Text der Datenschutzerklärung</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('settings.gdpr.privacyText')}</label>
         <textarea
           rows={10}
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono resize-y"
@@ -690,11 +680,11 @@ function GdprTab() {
       <div className="flex gap-3">
         <button type="submit" disabled={saving}
           className={`flex items-center gap-2 ${saving ? 'bg-gray-400' : 'bg-primary-600 hover:bg-primary-700'} text-white font-semibold px-5 py-2.5 rounded-lg transition-colors text-sm`}>
-          <Save size={16} /> {saving ? 'Speichern...' : 'Einstellungen speichern'}
+          <Save size={16} /> {saving ? t('common.loading') : t('settings.gdpr.save')}
         </button>
         <button type="button" onClick={handleCleanup} disabled={cleaning}
           className="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors text-sm">
-          <ShieldCheck size={16} /> {cleaning ? 'Läuft...' : 'Jetzt bereinigen'}
+          <ShieldCheck size={16} /> {cleaning ? t('common.loading') : t('settings.gdpr.cleanup')}
         </button>
       </div>
 
@@ -714,6 +704,7 @@ const SECURITY_OPTIONS = [
 ];
 
 function EmailTab() {
+  const { t } = useTranslation();
   const [config, setConfig] = useState(null);
   const [security, setSecurity] = useState('starttls');
   const [savingSec, setSavingSec] = useState(false);
@@ -734,24 +725,24 @@ function EmailTab() {
     setSavingSec(true);
     try {
       await client.put('/settings/system', { smtp_security: val });
-      showToast('Verschlüsselung gespeichert');
+      showToast(t('settings.email.saved'));
       const r = await client.get('/settings/smtp-config');
       setConfig(r.data);
     } catch {
-      showToast('Fehler beim Speichern', 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setSavingSec(false);
     }
   };
 
   const handleTest = async () => {
-    if (!testEmail) { showToast('Bitte Empfänger-E-Mail eingeben', 'error'); return; }
+    if (!testEmail) { showToast(t('common.error'), 'error'); return; }
     setTesting(true);
     try {
       const res = await client.post('/settings/email-test', { to: testEmail });
       showToast(res.data.message);
     } catch (err) {
-      showToast(err.response?.data?.error || 'Fehler beim Senden', 'error');
+      showToast(err.response?.data?.error || t('settings.email.testError'), 'error');
     } finally {
       setTesting(false);
     }
@@ -846,7 +837,7 @@ function EmailTab() {
             className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-lg transition-colors text-sm whitespace-nowrap"
           >
             <Mail size={15} className={testing ? 'animate-pulse' : ''} />
-            {testing ? 'Wird gesendet...' : 'Test senden'}
+            {testing ? t('common.loading') : t('settings.email.test')}
           </button>
         </div>
       </div>
@@ -855,6 +846,7 @@ function EmailTab() {
 }
 
 function PasswordTab() {
+  const { t } = useTranslation();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -863,20 +855,20 @@ function PasswordTab() {
     e.preventDefault();
     setError('');
     if (form.newPassword !== form.confirmPassword) {
-      setError('Neue Passwörter stimmen nicht überein');
+      setError(t('settings.password.mismatch'));
       return;
     }
     if (form.newPassword.length < 8) {
-      setError('Passwort muss mindestens 8 Zeichen lang sein');
+      setError(t('settings.password.error'));
       return;
     }
     setLoading(true);
     try {
       await client.put('/auth/change-password', { currentPassword: form.currentPassword, newPassword: form.newPassword });
-      showToast('Passwort erfolgreich geändert');
+      showToast(t('settings.password.success'));
       setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
-      setError(err.response?.data?.error || 'Fehler beim Ändern des Passworts');
+      setError(err.response?.data?.error || t('settings.password.error'));
     } finally {
       setLoading(false);
     }
@@ -888,9 +880,9 @@ function PasswordTab() {
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>
       )}
       {[
-        { key: 'currentPassword', label: 'Aktuelles Passwort' },
-        { key: 'newPassword', label: 'Neues Passwort' },
-        { key: 'confirmPassword', label: 'Neues Passwort bestätigen' },
+        { key: 'currentPassword', label: t('settings.password.current') },
+        { key: 'newPassword', label: t('settings.password.new') },
+        { key: 'confirmPassword', label: t('settings.password.confirm') },
       ].map(({ key, label }) => (
         <div key={key}>
           <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -901,13 +893,14 @@ function PasswordTab() {
       <button type="submit" disabled={loading}
         className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
         <Key size={16} />
-        {loading ? 'Wird geändert...' : 'Passwort ändern'}
+        {loading ? t('settings.password.changing') : t('settings.password.submit')}
       </button>
     </form>
   );
 }
 
 function LdapTab() {
+  const { t } = useTranslation();
   const [cfg, setCfg] = useState({
     ldap_enabled: 'false',
     ldap_url: '',
@@ -937,8 +930,8 @@ function LdapTab() {
     try {
       const r = await client.put('/settings/ldap', cfg);
       setCfg(r.data);
-      showToast('LDAP-Einstellungen gespeichert');
-    } catch { showToast('Fehler beim Speichern', 'error'); }
+      showToast(t('settings.ldap.saved'));
+    } catch { showToast(t('common.error'), 'error'); }
     finally { setSaving(false); }
   };
 
@@ -946,9 +939,9 @@ function LdapTab() {
     setTesting(true);
     try {
       const r = await client.post('/settings/ldap/test');
-      showToast(r.data.message, 'success');
+      showToast(r.data.message || t('settings.ldap.testSuccess'), 'success');
     } catch (e) {
-      showToast(e.response?.data?.error || 'Verbindung fehlgeschlagen', 'error');
+      showToast(e.response?.data?.error || t('common.error'), 'error');
     } finally { setTesting(false); }
   };
 
@@ -958,9 +951,9 @@ function LdapTab() {
     try {
       const r = await client.post('/settings/ldap/sync');
       setSyncResult(r.data);
-      showToast(`${r.data.synced} Gastgeber synchronisiert`);
+      showToast(t('settings.ldap.syncResult'));
     } catch (e) {
-      showToast(e.response?.data?.error || 'Sync fehlgeschlagen', 'error');
+      showToast(e.response?.data?.error || t('common.error'), 'error');
     } finally { setSyncing(false); }
   };
 
@@ -1014,7 +1007,7 @@ function LdapTab() {
         <button onClick={handleTest} disabled={testing || !cfg.ldap_url}
           className="flex items-center gap-2 border border-gray-300 hover:border-primary-400 hover:text-primary-700 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-40">
           <PlugZap size={15} />
-          {testing ? 'Wird getestet…' : 'Verbindung testen'}
+          {testing ? t('common.loading') : t('settings.ldap.test')}
         </button>
       </div>
 
@@ -1062,12 +1055,12 @@ function LdapTab() {
         <button onClick={handleSave} disabled={saving}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
           <Save size={15} />
-          {saving ? 'Wird gespeichert…' : 'Einstellungen speichern'}
+          {saving ? t('common.loading') : t('settings.ldap.save')}
         </button>
         <button onClick={handleSync} disabled={syncing || cfg.ldap_enabled !== 'true'}
           className="flex items-center gap-2 border border-gray-300 hover:border-primary-400 hover:text-primary-700 text-gray-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-40">
           <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Synchronisiert…' : 'Hosts jetzt synchronisieren'}
+          {syncing ? t('common.loading') : t('settings.ldap.sync')}
         </button>
       </div>
 
@@ -1086,14 +1079,27 @@ function LdapTab() {
 }
 
 export default function Settings() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('locations');
   const { user } = useAuth();
+
+  const TABS = [
+    { key: 'locations', label: t('settings.tabs.locations'), icon: MapPin },
+    { key: 'purposes', label: t('settings.tabs.purposes'), icon: ListChecks },
+    { key: 'users', label: t('settings.tabs.users'), icon: Users, superadminOnly: true },
+    { key: 'auto-checkout', label: t('settings.tabs.autoCheckout'), icon: Clock, superadminOnly: true },
+    { key: 'printer', label: t('settings.tabs.printer'), icon: Printer },
+    { key: 'ldap', label: t('settings.tabs.ldap'), icon: Server, superadminOnly: true },
+    { key: 'gdpr', label: t('settings.tabs.gdpr'), icon: ShieldCheck },
+    { key: 'email', label: t('settings.tabs.email'), icon: Mail },
+    { key: 'password', label: t('settings.tabs.password'), icon: Key },
+  ];
 
   return (
     <div className="p-6 space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Einstellungen</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Systemkonfiguration und Benutzerverwaltung</p>
+        <h1 className="text-2xl font-bold text-gray-900">{t('settings.title')}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{t('settings.subtitle')}</p>
       </div>
 
       {/* Tabs */}

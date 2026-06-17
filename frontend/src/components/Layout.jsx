@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { LogOut, Monitor, Users } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 function Toast({ toasts }) {
   return (
@@ -33,6 +34,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [toasts, setToasts] = useState([]);
+  const { t } = useTranslation();
 
   React.useEffect(() => {
     toastListeners.push(setToasts);
@@ -45,8 +47,7 @@ export default function Layout() {
   };
 
   const getRoleLabel = (role) => {
-    const labels = { superadmin: 'Super Admin', admin: 'Admin', receptionist: 'Empfang' };
-    return labels[role] || role;
+    return t(`roles.${role}`, { defaultValue: role });
   };
 
   return (
@@ -64,7 +65,7 @@ export default function Layout() {
               className="flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600 transition-colors px-3 py-1.5 rounded-lg hover:bg-primary-50"
             >
               <Monitor size={16} />
-              <span>Kiosk öffnen</span>
+              <span>{t('layout.openKiosk')}</span>
             </a>
             <a
               href="/host"
@@ -73,7 +74,7 @@ export default function Layout() {
               className="flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600 transition-colors px-3 py-1.5 rounded-lg hover:bg-primary-50"
             >
               <Users size={16} />
-              <span>Host-Portal</span>
+              <span>{t('layout.hostPortal')}</span>
             </a>
           </div>
           <div className="flex items-center gap-3">
@@ -88,7 +89,7 @@ export default function Layout() {
               <button
                 onClick={handleLogout}
                 className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                title="Abmelden"
+                title={t('layout.logout')}
               >
                 <LogOut size={18} />
               </button>

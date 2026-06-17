@@ -6,10 +6,12 @@ import { de } from 'date-fns/locale';
 import StatCard from '../components/StatCard';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
+import { useTranslation } from 'react-i18next';
 
 function StatusBadge({ status }) {
-  if (status === 'active') return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Anwesend</span>;
-  if (status === 'completed') return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">Ausgecheckt</span>;
+  const { t } = useTranslation();
+  if (status === 'active') return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">{t('status.active')}</span>;
+  if (status === 'completed') return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{t('status.completed')}</span>;
   return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">{status}</span>;
 }
 
@@ -25,10 +27,13 @@ function InitialsAvatar({ name }) {
 }
 
 function QuickCheckinModal({ onClose, onSuccess }) {
+  const { t } = useTranslation();
   const [hosts, setHosts] = useState([]);
   const [purposes, setPurposes] = useState([]);
   const [form, setForm] = useState({ first_name: '', last_name: '', company: '', host_id: '', purpose: '' });
+  const [hostManualName, setHostManualName] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const isManualHost = form.host_id === '_manual';
 
   useEffect(() => {
     Promise.all([client.get('/hosts'), client.get('/visit-purposes')]).then(([h, p]) => {
@@ -39,15 +44,20 @@ function QuickCheckinModal({ onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.first_name || !form.last_name) { showToast('Vor- und Nachname erforderlich', 'error'); return; }
+    if (!form.first_name || !form.last_name) { showToast(t('visitors.form.firstName') + ' + ' + t('visitors.form.lastName'), 'error'); return; }
+    if (isManualHost && !hostManualName.trim()) { showToast(t('preregistrations.form.hostNameError'), 'error'); return; }
     setSubmitting(true);
     try {
-      await client.post('/visitors', form);
-      showToast('Besucher erfolgreich eingecheckt');
+      await client.post('/visitors', {
+        ...form,
+        host_id: isManualHost ? null : (form.host_id || null),
+        host_name_free: isManualHost ? hostManualName.trim() : null,
+      });
+      showToast(t('visitors.checkedIn'));
       onSuccess();
       onClose();
     } catch (err) {
-      showToast(err.response?.data?.error || 'Fehler beim Einchecken', 'error');
+      showToast(err.response?.data?.error || t('common.error'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -60,46 +70,52 @@ function QuickCheckinModal({ onClose, onSuccess }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-            <UserPlus size={16} className="text-primary-600" /> Besucher einchecken
+            <UserPlus size={16} className="text-primary-600" /> {t('dashboard.checkinBtn')}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Vorname *</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t('visitors.form.firstName')} *</label>
               <input className={inp} value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} placeholder="Max" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nachname *</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t('visitors.form.lastName')} *</label>
               <input className={inp} value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} placeholder="Muster" />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Unternehmen</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('visitors.form.company')}</label>
             <input className={inp} value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} placeholder="Muster GmbH" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Gastgeber</label>
-            <select className={inp} value={form.host_id} onChange={e => setForm(f => ({ ...f, host_id: e.target.value }))}>
-              <option value="">– Gastgeber wählen –</option>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('visitors.form.host')}</label>
+            <select className={inp} value={form.host_id} onChange={e => { setForm(f => ({ ...f, host_id: e.target.value })); setHostManualName(''); }}>
+              <option value="">{t('common.selectHost')}</option>
               {hosts.map(h => <option key={h.id} value={h.id}>{h.name}{h.department ? ` (${h.department})` : ''}</option>)}
+              <option value="_manual">{t('common.manualEntry')}</option>
             </select>
+            {isManualHost && (
+              <input className={`${inp} mt-2`} value={hostManualName}
+                onChange={e => setHostManualName(e.target.value)}
+                placeholder={t('visitors.form.hostPlaceholder')} autoFocus />
+            )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Besuchsgrund</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('visitors.form.purpose')}</label>
             <select className={inp} value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}>
-              <option value="">– Grund wählen –</option>
+              <option value="">{t('common.selectPurpose')}</option>
               {purposes.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
             </select>
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 border border-gray-300 text-gray-700 font-medium px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
-              Abbrechen
+              {t('common.cancel')}
             </button>
             <button type="submit" disabled={submitting} className="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2">
               <UserPlus size={14} />
-              {submitting ? 'Wird eingecheckt…' : 'Einchecken'}
+              {submitting ? t('common.loading') : t('common.checkin')}
             </button>
           </div>
         </form>
@@ -109,6 +125,7 @@ function QuickCheckinModal({ onClose, onSuccess }) {
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation();
   const [stats, setStats] = useState(null);
   const [chart, setChart] = useState([]);
   const [recent, setRecent] = useState([]);
@@ -128,11 +145,11 @@ export default function Dashboard() {
       setChart(chartRes.data);
       setRecent(recentRes.data);
     } catch {
-      showToast('Fehler beim Laden der Dashboard-Daten', 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -140,10 +157,10 @@ export default function Dashboard() {
     setCheckingOut(visitId);
     try {
       await client.post(`/visits/${visitId}/checkout`);
-      showToast('Besucher erfolgreich ausgecheckt');
+      showToast(t('visitors.checkedOut'));
       loadData();
     } catch {
-      showToast('Fehler beim Auschecken', 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setCheckingOut(null);
     }
@@ -172,7 +189,7 @@ export default function Dashboard() {
 
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('dashboard.title')}</h1>
           <p className="text-gray-500 text-sm mt-1">
             {format(new Date(), "EEEE, dd. MMMM yyyy", { locale: de })}
           </p>
@@ -181,22 +198,22 @@ export default function Dashboard() {
           onClick={() => setShowCheckin(true)}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors shadow-sm"
         >
-          <UserPlus size={16} /> Einchecken
+          <UserPlus size={16} /> {t('common.checkin')}
         </button>
       </div>
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard title="Besucher heute" value={stats?.todayTotal} icon={Users} color="blue" />
-        <StatCard title="Aktuell anwesend" value={stats?.currentlyIn} icon={UserCheck} color="green" />
-        <StatCard title="Ausgecheckt" value={stats?.checkedOutToday} icon={UserMinus} color="yellow" />
-        <StatCard title="Diese Woche" value={stats?.thisWeekTotal} icon={Calendar} color="purple" />
+        <StatCard title={t('dashboard.today')} value={stats?.todayTotal} icon={Users} color="blue" />
+        <StatCard title={t('dashboard.currentlyPresent')} value={stats?.currentlyIn} icon={UserCheck} color="green" />
+        <StatCard title={t('dashboard.checkedOut')} value={stats?.checkedOutToday} icon={UserMinus} color="yellow" />
+        <StatCard title={t('dashboard.thisWeek')} value={stats?.thisWeekTotal} icon={Calendar} color="purple" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Chart */}
         <div className="xl:col-span-2 bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">Besucher – letzte 14 Tage</h2>
+          <h2 className="text-base font-semibold text-gray-900 mb-4">{t('dashboard.visitor')} – {t('reports.chartTitle')}</h2>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chart} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -204,8 +221,8 @@ export default function Dashboard() {
                 <XAxis dataKey="date" tickFormatter={formatChartDate} tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                 <Tooltip
-                  formatter={(v) => [v, 'Besucher']}
-                  labelFormatter={(l) => `Datum: ${formatChartDate(l)}`}
+                  formatter={(v) => [v, t('dashboard.visitor')]}
+                  labelFormatter={(l) => formatChartDate(l)}
                   contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
                 />
                 <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
@@ -216,11 +233,11 @@ export default function Dashboard() {
 
         {/* Quick stats */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">Übersicht</h2>
+          <h2 className="text-base font-semibold text-gray-900 mb-4">{t('dashboard.recentVisits')}</h2>
           <div className="space-y-4">
             {[
-              { label: 'Dieser Monat', value: stats?.thisMonthTotal, icon: Calendar, color: 'text-blue-600' },
-              { label: 'Aktuell im Haus', value: stats?.currentlyIn, icon: UserCheck, color: 'text-green-600' },
+              { label: t('dashboard.thisMonth'), value: stats?.thisMonthTotal, icon: Calendar, color: 'text-blue-600' },
+              { label: t('dashboard.currentlyPresent'), value: stats?.currentlyIn, icon: UserCheck, color: 'text-green-600' },
             ].map(({ label, value, icon: Icon, color }) => (
               <div key={label} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
                 <div className="flex items-center gap-3">
@@ -237,12 +254,12 @@ export default function Dashboard() {
       {/* Recent visitors */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
-          <h2 className="text-base font-semibold text-gray-900 whitespace-nowrap">Letzte Besuche</h2>
+          <h2 className="text-base font-semibold text-gray-900 whitespace-nowrap">{t('dashboard.recentVisits')}</h2>
           <div className="relative max-w-xs w-full">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Name, Firma oder abat-ID…"
+              placeholder={t('visitors.searchPlaceholder')}
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -253,12 +270,12 @@ export default function Dashboard() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
               <tr>
-                <th className="text-left px-6 py-3">Besucher</th>
-                <th className="text-left px-6 py-3">abat-ID</th>
-                <th className="text-left px-6 py-3">Gastgeber</th>
-                <th className="text-left px-6 py-3">Zweck</th>
-                <th className="text-left px-6 py-3">Eingecheckt</th>
-                <th className="text-left px-6 py-3">Status</th>
+                <th className="text-left px-6 py-3">{t('dashboard.table.visitor')}</th>
+                <th className="text-left px-6 py-3">{t('visitors.table.abatId')}</th>
+                <th className="text-left px-6 py-3">{t('dashboard.table.host')}</th>
+                <th className="text-left px-6 py-3">{t('common.purpose')}</th>
+                <th className="text-left px-6 py-3">{t('dashboard.table.checkedIn')}</th>
+                <th className="text-left px-6 py-3">{t('dashboard.table.status')}</th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
@@ -295,7 +312,7 @@ export default function Dashboard() {
                         className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 border border-gray-200 hover:border-red-200 rounded-lg px-3 py-1.5 transition-all disabled:opacity-50"
                       >
                         <LogOut size={13} />
-                        Auschecken
+                        {t('common.checkout')}
                       </button>
                     )}
                   </td>
@@ -304,7 +321,7 @@ export default function Dashboard() {
               {filteredRecent.length === 0 && (
                 <tr>
                   <td colSpan={7} className="text-center py-12 text-gray-400">
-                    {search ? 'Keine Treffer für diese Suche' : 'Noch keine Besuche vorhanden'}
+                    {search ? t('visitors.noData') : t('dashboard.noRecentVisits')}
                   </td>
                 </tr>
               )}

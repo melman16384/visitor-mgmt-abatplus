@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import axios from 'axios';
+import { useTranslation } from 'react-i18next';
 
 export default function HostLogin() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +22,7 @@ export default function HostLogin() {
       localStorage.setItem('host_token', res.data.token);
       navigate('/host');
     } catch (err) {
-      setError(err.response?.data?.error || 'Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Eingaben.');
+      setError(err.response?.data?.error || t('login.error'));
     } finally {
       setLoading(false);
     }
@@ -37,8 +39,8 @@ export default function HostLogin() {
         <div className="kiosk-fade-up bg-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-abat-dunkelgrau px-8 py-8 text-center">
             <img src="/logo-light.png" alt="abat AG" className="kiosk-pop-in h-14 mx-auto mb-4" />
-            <h1 className="kiosk-fade-up kiosk-delay-1 text-2xl font-bold text-white">Gastgeber-Portal</h1>
-            <p className="kiosk-fade-up kiosk-delay-2 text-abat-hellgrau text-sm mt-1">Melden Sie sich mit Ihren Zugangsdaten an</p>
+            <h1 className="kiosk-fade-up kiosk-delay-1 text-2xl font-bold text-white">{t('login.hostPortalTitle')}</h1>
+            <p className="kiosk-fade-up kiosk-delay-2 text-abat-hellgrau text-sm mt-1">{t('login.hostPortalSubtitle')}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="px-8 py-8 space-y-5">
@@ -50,7 +52,7 @@ export default function HostLogin() {
             )}
 
             <div className="kiosk-fade-up kiosk-delay-2">
-              <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">E-Mail-Adresse</label>
+              <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">{t('login.email')}</label>
               <input
                 type="email"
                 value={email}
@@ -63,7 +65,7 @@ export default function HostLogin() {
             </div>
 
             <div className="kiosk-fade-up kiosk-delay-3">
-              <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">Passwort</label>
+              <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">{t('login.password')}</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -93,9 +95,9 @@ export default function HostLogin() {
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Anmelden...
+                    {t('login.loggingIn')}
                   </span>
-                ) : 'Anmelden'}
+                ) : t('login.submit')}
               </button>
             </div>
           </form>

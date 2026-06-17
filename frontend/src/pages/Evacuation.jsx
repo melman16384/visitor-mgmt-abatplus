@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Printer, RefreshCw, Users, MapPin, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
@@ -6,6 +7,7 @@ import client from '../api/client';
 import { showToast } from '../components/Layout';
 
 function CounterCard({ total, loading }) {
+  const { t } = useTranslation();
   const danger = total > 0;
   return (
     <div className={`rounded-xl border p-5 shadow-sm flex items-center gap-4 ${danger ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
@@ -13,7 +15,7 @@ function CounterCard({ total, loading }) {
         <Users size={26} className={danger ? 'text-red-600' : 'text-green-600'} />
       </div>
       <div>
-        <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Personen im Gebäude</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">{t('evacuation.totalPersons')}</p>
         <p className={`text-4xl font-bold tabular-nums ${danger ? 'text-red-700' : 'text-green-700'}`}>
           {loading ? '–' : total}
         </p>
@@ -23,6 +25,7 @@ function CounterCard({ total, loading }) {
 }
 
 function LocationSection({ location, startIndex }) {
+  const { t } = useTranslation();
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden print:break-inside-avoid">
       {/* Location header */}
@@ -35,19 +38,19 @@ function LocationSection({ location, startIndex }) {
           )}
         </div>
         <span className="text-sm font-semibold text-gray-500">
-          {location.visitors.length} {location.visitors.length === 1 ? 'Person' : 'Personen'}
+          {location.visitors.length} {location.visitors.length === 1 ? t('evacuation.person') : t('evacuation.persons')}
         </span>
       </div>
 
       <table className="w-full text-sm">
         <thead className="text-gray-400 text-xs uppercase tracking-wide border-b border-gray-100">
           <tr>
-            <th className="text-left px-5 py-2.5 w-8">Nr.</th>
-            <th className="text-left px-5 py-2.5">Name</th>
-            <th className="text-left px-5 py-2.5">Unternehmen</th>
-            <th className="text-left px-5 py-2.5">Gastgeber</th>
-            <th className="text-left px-5 py-2.5">Badge</th>
-            <th className="text-left px-5 py-2.5">Check-in</th>
+            <th className="text-left px-5 py-2.5 w-8">{t('evacuation.table.no')}</th>
+            <th className="text-left px-5 py-2.5">{t('evacuation.table.name')}</th>
+            <th className="text-left px-5 py-2.5">{t('evacuation.table.company')}</th>
+            <th className="text-left px-5 py-2.5">{t('evacuation.table.host')}</th>
+            <th className="text-left px-5 py-2.5">{t('evacuation.table.badge')}</th>
+            <th className="text-left px-5 py-2.5">{t('evacuation.table.checkin')}</th>
             <th className="text-center px-5 py-2.5 w-16">✓</th>
           </tr>
         </thead>
@@ -81,14 +84,15 @@ function LocationSection({ location, startIndex }) {
 }
 
 export default function Evacuation() {
+  const { t } = useTranslation();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -97,7 +101,7 @@ export default function Evacuation() {
       setData(res.data);
       setLastUpdated(new Date());
     } catch {
-      showToast('Fehler beim Laden der Evakuierungsliste', 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setLoading(false);
     }
@@ -120,22 +124,22 @@ export default function Evacuation() {
       {/* ── Screen header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between no-print">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Evakuierungsliste</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{t('evacuation.title')}</h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Aktualisierung alle 30 s
-            {lastUpdated && ` · Stand: ${format(lastUpdated, 'HH:mm:ss', { locale: de })}`}
+            {t('evacuation.subtitle')}
+            {lastUpdated && ` · ${t('evacuation.lastUpdated')}: ${format(lastUpdated, 'HH:mm:ss', { locale: de })}`}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={loadData}
             className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 hover:border-gray-300 px-3 py-2 rounded-lg transition-all">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Aktualisieren
+            {t('evacuation.refresh')}
           </button>
           <button onClick={() => window.print()}
             className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-sm transition-colors">
             <Printer size={16} />
-            Liste drucken
+            {t('evacuation.print')}
           </button>
         </div>
       </div>
@@ -144,8 +148,8 @@ export default function Evacuation() {
       <div className="hidden print:block mb-4">
         <div className="flex items-center justify-between border-b-2 border-gray-800 pb-3 mb-1">
           <div>
-            <h1 className="text-2xl font-bold tracking-wide uppercase">Evakuierungsliste</h1>
-            <p className="text-sm text-gray-600 mt-0.5">abat AG — Besucherverwaltung</p>
+            <h1 className="text-2xl font-bold tracking-wide uppercase">{t('evacuation.print.header')}</h1>
+            <p className="text-sm text-gray-600 mt-0.5">{t('evacuation.print.subtitle')}</p>
           </div>
           <div className="text-right">
             <p className="text-lg font-bold">{format(now, 'HH:mm:ss')}</p>
@@ -153,8 +157,7 @@ export default function Evacuation() {
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          Alle aufgeführten Personen müssen sich am Sammelplatz einfinden und namentlich abgehakt werden.
-          Gesamtzahl: <strong>{total}</strong> {total === 1 ? 'Person' : 'Personen'}
+          {t('evacuation.print.note')} <strong>{total}</strong> {total === 1 ? t('evacuation.person') : t('evacuation.persons')}
         </p>
       </div>
 
@@ -162,7 +165,7 @@ export default function Evacuation() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 no-print">
         {/* Clock */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-1">Aktuelle Zeit</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-1">{t('evacuation.currentTime')}</p>
           <p className="text-3xl font-bold text-gray-900 font-mono">{format(now, 'HH:mm:ss')}</p>
           <p className="text-xs text-gray-400 mt-1">{format(now, 'EEEE, dd. MMMM yyyy', { locale: de })}</p>
         </div>
@@ -176,7 +179,7 @@ export default function Evacuation() {
             <MapPin size={26} className="text-primary-600" />
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Standorte</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">{t('evacuation.locations')}</p>
             <p className="text-4xl font-bold tabular-nums text-gray-800">{loading ? '–' : locations.length}</p>
           </div>
         </div>
@@ -187,9 +190,9 @@ export default function Evacuation() {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 no-print">
           <AlertTriangle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-amber-800 font-semibold text-sm">Im Evakuierungsfall</p>
+            <p className="text-amber-800 font-semibold text-sm">{t('evacuation.alert.title')}</p>
             <p className="text-amber-700 text-sm mt-0.5">
-              Alle <strong>{total}</strong> aufgeführten {total === 1 ? 'Person muss' : 'Personen müssen'} sich am Sammelplatz einfinden und namentlich abgehakt werden.
+              {t('evacuation.alert.all')} <strong>{total}</strong> {total === 1 ? t('evacuation.person') : t('evacuation.persons')} {t('evacuation.alert.text')}
             </p>
           </div>
         </div>
@@ -203,7 +206,7 @@ export default function Evacuation() {
       ) : total === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm text-center py-20 text-gray-400">
           <Users size={40} className="mx-auto mb-3 text-gray-200" />
-          Aktuell keine Besucher im Gebäude
+          {t('evacuation.noVisitors')}
         </div>
       ) : (
         <div className="space-y-5">
@@ -218,7 +221,7 @@ export default function Evacuation() {
       {/* ── Footer ─────────────────────────────────────────────────────────────── */}
       {data?.generated_at && (
         <p className="text-xs text-gray-300 text-right no-print">
-          Generiert: {format(new Date(data.generated_at), 'dd.MM.yyyy HH:mm:ss', { locale: de })}
+          {t('evacuation.generated')}: {format(new Date(data.generated_at), 'dd.MM.yyyy HH:mm:ss', { locale: de })}
         </p>
       )}
     </div>

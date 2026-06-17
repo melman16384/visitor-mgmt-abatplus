@@ -1,6 +1,6 @@
 # Besucherverwaltungssystem — Projektdokumentation
 
-> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 16. Juni 2026 (Rev. 2)  
+> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 17. Juni 2026 (Rev. 3)  
 > Kunde: **abat AG**  
 > Domain: https://visitor.luwilab.work  
 > Server: /opt/visitor-mgmt
@@ -17,23 +17,24 @@
 6. [Backend API](#6-backend-api)
 7. [Frontend & Seiten](#7-frontend--seiten)
 8. [Kiosk-System](#8-kiosk-system)
-9. [abat-ID](#9-abat-id)
-10. [Dokumenten-Upload & Unterschrift](#10-dokumenten-upload--unterschrift)
-11. [Zugangsdaten & Benutzerrollen](#11-zugangsdaten--benutzerrollen)
-12. [Standortbasierte Zugriffskontrolle](#12-standortbasierte-zugriffskontrolle)
-13. [Badge-Drucker (Brother QL-820NWB)](#13-badge-drucker-brother-ql-820nwb)
-14. [E-Mail-System](#14-e-mail-system)
-15. [Auto-Checkout](#15-auto-checkout)
-16. [Host-Portal](#16-host-portal)
-17. [Audit-Log & Compliance](#17-audit-log--compliance)
-18. [Sicherheit](#18-sicherheit)
-19. [GDPR & Datenschutz](#19-gdpr--datenschutz)
-20. [Infrastruktur & Deployment](#20-infrastruktur--deployment)
-21. [SSL & Cloudflare](#21-ssl--cloudflare)
-22. [Umgebungsvariablen (.env)](#22-umgebungsvariablen-env)
-23. [Wichtige Befehle](#23-wichtige-befehle)
-24. [Fehlerbehebung](#24-fehlerbehebung)
-25. [Netzwerk & Firewall-Freigaben](#25-netzwerk--firewall-freigaben)
+9. [Mehrsprachigkeit (i18n)](#9-mehrsprachigkeit-i18n)
+10. [abat-ID](#10-abat-id)
+11. [Dokumenten-Upload & Unterschrift](#11-dokumenten-upload--unterschrift)
+12. [Zugangsdaten & Benutzerrollen](#12-zugangsdaten--benutzerrollen)
+13. [Standortbasierte Zugriffskontrolle](#13-standortbasierte-zugriffskontrolle)
+14. [Badge-Drucker (Brother QL-820NWB)](#14-badge-drucker-brother-ql-820nwb)
+15. [E-Mail-System](#15-e-mail-system)
+16. [Auto-Checkout](#16-auto-checkout)
+17. [Host-Portal](#17-host-portal)
+18. [Audit-Log & Compliance](#18-audit-log--compliance)
+19. [Sicherheit](#19-sicherheit)
+20. [GDPR & Datenschutz](#20-gdpr--datenschutz)
+21. [Infrastruktur & Deployment](#21-infrastruktur--deployment)
+22. [SSL & Cloudflare](#22-ssl--cloudflare)
+23. [Umgebungsvariablen (.env)](#23-umgebungsvariablen-env)
+24. [Wichtige Befehle](#24-wichtige-befehle)
+25. [Fehlerbehebung](#25-fehlerbehebung)
+26. [Netzwerk & Firewall-Freigaben](#26-netzwerk--firewall-freigaben)
 
 ---
 
@@ -75,6 +76,7 @@ Ein vollständiges, webbasiertes Besucherverwaltungssystem für Unternehmen. Bes
 | abat AG CI | Logo, Mulish-Schrift, Markenfarben durchgängig |
 | Automatisches DB-Backup | Tägliches SQLite-Backup um 03:00 Uhr via systemd Timer; 30 Tage Aufbewahrung |
 | Besuchszweck-Sortierung | Reihenfolge per Drag & Drop im Admin anpassbar |
+| **Mehrsprachigkeit (i18n)** | Admin-, Empfangs- und Gastgeber-Panel in DE / EN / LT / RU; Sprachumschalter in der Sidebar; Kiosk hat eigenes i18n-System (DE/EN) |
 
 ---
 
@@ -128,7 +130,7 @@ Brother QL-820NWB (Etikettendrucker)
 ```
 
 **Tech Stack:**
-- **Frontend:** React 18 + Vite + Tailwind CSS + Mulish Font
+- **Frontend:** React 18 + Vite + Tailwind CSS + Mulish Font + react-i18next (i18n)
 - **Backend:** Node.js + Express.js
 - **Datenbank:** SQLite (better-sqlite3, WAL-Modus)
 - **Auth:** JWT (JSON Web Tokens) — Admin-Token: 8h, Host-Token: 12h
@@ -201,15 +203,21 @@ Brother QL-820NWB (Etikettendrucker)
 │   │   ├── api/client.js            # Axios-Instanz, 401-Redirect (kiosk-aware)
 │   │   ├── components/
 │   │   │   ├── Layout.jsx
-│   │   │   ├── Sidebar.jsx          # Navigation mit rollenbasierter Filterung
+│   │   │   ├── Sidebar.jsx          # Navigation + LangSwitcher (Sprachumschalter DE/EN/LT/RU)
 │   │   │   ├── Modal.jsx
 │   │   │   ├── QRScanner.jsx
 │   │   │   ├── KioskHeader.jsx      # Wiederverwendbarer Kiosk-Header (Zurück, Logo, Sprachumschalter)
 │   │   │   ├── SignaturePad.jsx
 │   │   │   └── DocumentSigning.jsx
+│   │   ├── i18n/
+│   │   │   ├── index.js             # i18next-Initialisierung (Sprachen registrieren, localStorage-Persistenz)
+│   │   │   ├── de.js                # Deutsch (Referenz-Datei)
+│   │   │   ├── en.js                # Englisch
+│   │   │   ├── lt.js                # Litauisch
+│   │   │   └── ru.js                # Russisch
 │   │   ├── context/
 │   │   │   ├── AuthContext.jsx
-│   │   │   └── KioskLangContext.jsx  # DE/EN Übersetzungen für Kiosk
+│   │   │   └── KioskLangContext.jsx  # DE/EN Übersetzungen für Kiosk (separat von Admin-i18n)
 │   │   └── pages/
 │   │       ├── AuditLog.jsx         # Audit-Log & Compliance (superadmin)
 │   │       ├── Dashboard.jsx
@@ -620,7 +628,73 @@ Formularfelder: Vorname *, Nachname *, Gastgeber *, Unternehmen, Besuchszweck, N
 
 ---
 
-## 9. abat-ID
+## 9. Mehrsprachigkeit (i18n)
+
+Das Admin-, Empfangs- und Gastgeber-Panel unterstützt vier Sprachen. Der Kiosk hat ein separates, unabhängiges i18n-System (DE/EN via `KioskLangContext`).
+
+### Unterstützte Sprachen
+
+| Code | Sprache | Flag |
+|---|---|---|
+| `de` | Deutsch | 🇩🇪 (Standard) |
+| `en` | English | 🇬🇧 |
+| `lt` | Lietuvių | 🇱🇹 |
+| `ru` | Русский | 🇷🇺 |
+
+### Technische Umsetzung
+
+- **Bibliothek:** `react-i18next` + `i18next`
+- **Initialisierung:** `frontend/src/i18n/index.js` (wird in `main.jsx` importiert)
+- **Sprachdateien:** `frontend/src/i18n/de.js`, `en.js`, `lt.js`, `ru.js`
+- **Namespace:** Einzelner Namespace `translation` — ein Objekt pro Sprache, strukturiert nach Sektionen
+- **Persistenz:** Gewählte Sprache wird in `localStorage` unter dem Key `admin_lang` gespeichert; Standard: `de`
+- **Hook:** `const { t } = useTranslation()` in jedem übersetzten Komponent
+- **Sprachumschalter:** `LangSwitcher`-Komponente in der Sidebar (Globe-Icon + Dropdown mit Flaggen)
+
+### Übersetzungsstruktur
+
+```
+translation
+├── nav.*           Seitennavigation
+├── common.*        Allgemeine Begriffe (Speichern, Abbrechen, Laden …)
+├── status.*        Status-Labels (Anwesend, Ausgecheckt …)
+├── roles.*         Rollenbezeichnungen
+├── login.*         Login-Seite (Admin + Gastgeber)
+├── layout.*        Header-Elemente
+├── dashboard.*     Dashboard & Schnell-Check-in
+├── visitors.*      Besucherverwaltung (Tabs, Formular, Tabelle)
+├── hosts.*         Gastgeberverwaltung
+├── preregistrations.* Vorregistrierungen
+├── evacuation.*    Evakuierungsliste
+├── reports.*       Berichte & Export
+├── settings.*      Einstellungen (alle Tabs)
+├── auditLog.*      Audit-Log & Compliance
+└── hostPortal.*    Gastgeber-Portal
+```
+
+### Kiosk-Sprache (separat)
+
+Der Kiosk (`KioskLangContext.jsx`) hat ein eigenes, unabhängiges Übersetzungssystem (DE/EN), das **nicht** mit `react-i18next` arbeitet und vollständig von der Admin-i18n getrennt ist. Die Kiosk-Sprache wird separat in `localStorage` unter `kiosk_lang` gespeichert und beeinflusst das Admin-Panel nicht.
+
+### Sprachdateien hinzufügen / erweitern
+
+```
+frontend/src/i18n/
+├── index.js   ← i18next-Konfiguration (hier neue Sprache registrieren)
+├── de.js      ← Deutsch (Referenz-Datei)
+├── en.js      ← Englisch
+├── lt.js      ← Litauisch
+└── ru.js      ← Russisch
+```
+
+Um eine neue Sprache hinzuzufügen:
+1. Neue Datei `xy.js` anlegen (Kopie von `de.js`, Inhalte übersetzen)
+2. In `index.js` importieren und als `xy: { translation: xy }` registrieren
+3. In `Sidebar.jsx` das `LANGUAGES`-Array um `{ code: 'xy', label: '...', flag: '🏳️' }` erweitern
+
+---
+
+## 10. abat-ID
 
 Jeder Besucher erhält eine permanente, einzigartige Kennung im Format `ABAT-########` (8 zufällige Ziffern).
 
@@ -638,7 +712,7 @@ Jeder Besucher erhält eine permanente, einzigartige Kennung im Format `ABAT-###
 
 ---
 
-## 10. Dokumenten-Upload & Unterschrift
+## 11. Dokumenten-Upload & Unterschrift
 
 Ablauf: Besucher einchecken → Dokument hochladen (optional) → Unterschrift leisten (optional).
 

@@ -1,163 +1,106 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, QrCode, Trash2, ZoomIn, CalendarCheck, UserPlus, Users, X } from 'lucide-react';
+import { Plus, QrCode, Trash2, ZoomIn, CalendarCheck } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { de } from 'date-fns/locale';
 import Modal from '../components/Modal';
 import client from '../api/client';
 import { showToast } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
-const statusConfig = {
-  pending:    { label: 'Ausstehend',  cls: 'bg-yellow-100 text-yellow-700' },
-  checked_in: { label: 'Eingecheckt', cls: 'bg-green-100 text-green-700' },
-  expired:    { label: 'Abgelaufen',  cls: 'bg-gray-100 text-gray-500' },
-  cancelled:  { label: 'Storniert',   cls: 'bg-red-100 text-red-700' },
-};
-
-const DATE_FILTERS = [
-  { key: 'all',      label: 'Alle' },
-  { key: 'today',    label: 'Heute' },
-  { key: 'tomorrow', label: 'Morgen' },
-  { key: 'week',     label: 'Diese Woche' },
-];
-
-const emptyGuest = () => ({ visitor_first_name: '', visitor_last_name: '', visitor_email: '' });
-
-function GuestRow({ guest, index, onChange, onRemove, canRemove }) {
-  const set = (k, v) => onChange(index, { ...guest, [k]: v });
-  return (
-    <div className="grid grid-cols-12 gap-2 items-start">
-      <div className="col-span-4">
-        <input
-          placeholder="Vorname *"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={guest.visitor_first_name}
-          onChange={e => set('visitor_first_name', e.target.value)}
-          required
-        />
-      </div>
-      <div className="col-span-4">
-        <input
-          placeholder="Nachname *"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={guest.visitor_last_name}
-          onChange={e => set('visitor_last_name', e.target.value)}
-          required
-        />
-      </div>
-      <div className="col-span-3">
-        <input
-          type="email"
-          placeholder="E-Mail (für QR)"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={guest.visitor_email}
-          onChange={e => set('visitor_email', e.target.value)}
-        />
-      </div>
-      <div className="col-span-1 flex justify-end pt-1">
-        {canRemove && (
-          <button type="button" onClick={() => onRemove(index)}
-            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-            <X size={15} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PreRegForm({ onSubmit, hosts, locations, purposes, loading }) {
-  const [guests, setGuests] = useState([emptyGuest()]);
-  const [shared, setShared] = useState({
-    visitor_company: '', host_id: '', location_id: '',
+function PreRegForm({ onSubmit, hosts, locations, purposes, loading, defaultHostId }) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState({
+    visitor_first_name: '', visitor_last_name: '', visitor_email: '',
+    visitor_company: '', host_id: defaultHostId || '', location_id: '',
     expected_date: '', expected_time: '', purpose: '', notes: '',
   });
-  const set = (k, v) => setShared(f => ({ ...f, [k]: v }));
+  const [hostManualName, setHostManualName] = useState('');
+  const [hostError, setHostError] = useState('');
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const isManualHost = form.host_id === '_manual';
 
   useEffect(() => {
-    if (purposes.length > 0 && !shared.purpose) set('purpose', purposes[0].name);
+    if (purposes.length > 0 && !form.purpose) set('purpose', purposes[0].name);
   }, [purposes]);
-
-  const updateGuest = (i, val) => setGuests(gs => gs.map((g, idx) => idx === i ? val : g));
-  const addGuest = () => setGuests(gs => [...gs, emptyGuest()]);
-  const removeGuest = (i) => setGuests(gs => gs.filter((_, idx) => idx !== i));
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit({ guests, ...shared });
+    if (!form.host_id) {
+      setHostError(t('preregistrations.form.hostError'));
+      return;
+    }
+    if (isManualHost && !hostManualName.trim()) {
+      setHostError(t('preregistrations.form.hostNameError'));
+      return;
+    }
+    setHostError('');
+    onSubmit({
+      ...form,
+      host_id: isManualHost ? null : form.host_id,
+      host_name_free: isManualHost ? hostManualName.trim() : null,
+    });
   };
 
-  const isGroup = guests.length > 1;
+  const inp = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500';
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Guest rows */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <label className="block text-sm font-semibold text-gray-700">
-            {isGroup ? `Gäste (${guests.length} Personen)` : 'Gast'}
-          </label>
-          <button type="button" onClick={addGuest}
-            className="flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-800 font-medium px-2.5 py-1.5 border border-primary-200 hover:bg-primary-50 rounded-lg transition-colors">
-            <UserPlus size={13} /> Person hinzufügen
-          </button>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.firstName')} *</label>
+          <input className={inp} value={form.visitor_first_name}
+            onChange={e => set('visitor_first_name', e.target.value)} required placeholder="Max" />
         </div>
-
-        {/* Column headers */}
-        <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-0.5">
-          <div className="col-span-4">Vorname *</div>
-          <div className="col-span-4">Nachname *</div>
-          <div className="col-span-3">E-Mail</div>
-          <div className="col-span-1" />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.lastName')} *</label>
+          <input className={inp} value={form.visitor_last_name}
+            onChange={e => set('visitor_last_name', e.target.value)} required placeholder="Mustermann" />
         </div>
-
-        <div className="space-y-2">
-          {guests.map((g, i) => (
-            <GuestRow key={i} guest={g} index={i}
-              onChange={updateGuest} onRemove={removeGuest} canRemove={guests.length > 1} />
-          ))}
-        </div>
-
-        {isGroup && (
-          <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-            <Users size={13} />
-            Gruppenregistrierung — alle {guests.length} Personen erhalten einen eigenen QR-Code
-          </div>
-        )}
-      </div>
-
-      <hr className="border-gray-100" />
-
-      {/* Shared fields */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Unternehmen</label>
-        <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={shared.visitor_company} onChange={e => set('visitor_company', e.target.value)}
-          placeholder="Gilt für alle Gäste" />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Gastgeber *</label>
-        <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={shared.host_id} onChange={e => set('host_id', e.target.value)} required>
-          <option value="">– Wählen –</option>
-          {hosts.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-        </select>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Standort</label>
-          <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={shared.location_id} onChange={e => set('location_id', e.target.value)}>
-            <option value="">– Kein –</option>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {t('preregistrations.form.email')} <span className="text-gray-400 font-normal">({t('preregistrations.form.emailHint')})</span>
+          </label>
+          <input type="email" className={inp} value={form.visitor_email}
+            onChange={e => set('visitor_email', e.target.value)} placeholder="besucher@firma.de" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.company')}</label>
+          <input className={inp} value={form.visitor_company}
+            onChange={e => set('visitor_company', e.target.value)} placeholder="Firma GmbH" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.host')} *</label>
+        <select className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${hostError ? 'border-red-400' : 'border-gray-300'}`}
+          value={form.host_id} onChange={e => { set('host_id', e.target.value); setHostManualName(''); setHostError(''); }} required>
+          <option value="">{t('common.noFilter')}</option>
+          {hosts.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+          <option value="_manual">{t('common.manualEntry')}</option>
+        </select>
+        {isManualHost && (
+          <input className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 mt-2 ${hostError ? 'border-red-400' : 'border-gray-300'}`}
+            value={hostManualName} onChange={e => { setHostManualName(e.target.value); setHostError(''); }}
+            placeholder={t('preregistrations.form.hostPlaceholder')} autoFocus />
+        )}
+        {hostError && <p className="mt-1 text-xs text-red-600">{hostError}</p>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.location')}</label>
+          <select className={inp} value={form.location_id} onChange={e => set('location_id', e.target.value)}>
+            <option value="">{t('common.selectLocation')}</option>
             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Zweck</label>
-          <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={shared.purpose} onChange={e => set('purpose', e.target.value)}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.purpose')}</label>
+          <select className={inp} value={form.purpose} onChange={e => set('purpose', e.target.value)}>
             {purposes.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
           </select>
         </div>
@@ -165,48 +108,58 @@ function PreRegForm({ onSubmit, hosts, locations, purposes, loading }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Datum *</label>
-          <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={shared.expected_date} onChange={e => set('expected_date', e.target.value)} required />
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.date')} *</label>
+          <input type="date" className={inp} value={form.expected_date}
+            onChange={e => set('expected_date', e.target.value)} required />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Uhrzeit</label>
-          <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={shared.expected_time} onChange={e => set('expected_time', e.target.value)} />
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.time')}</label>
+          <input type="time" className={inp} value={form.expected_time}
+            onChange={e => set('expected_time', e.target.value)} />
         </div>
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
-        <textarea rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          value={shared.notes} onChange={e => set('notes', e.target.value)} />
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t('preregistrations.form.notes')}</label>
+        <textarea rows={2} className={inp} value={form.notes} onChange={e => set('notes', e.target.value)} />
       </div>
 
       <button type="submit" disabled={loading}
         className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50 text-sm flex items-center justify-center gap-2">
-        {loading ? 'Wird erstellt...' : (
-          <>
-            {isGroup ? <Users size={16} /> : <Plus size={16} />}
-            {isGroup ? `${guests.length} Vorregistrierungen erstellen` : 'Vorregistrierung erstellen'}
-          </>
-        )}
+        {loading ? t('common.loading') : <><Plus size={16} /> {t('preregistrations.form.submit')}</>}
       </button>
     </form>
   );
 }
 
 export default function PreRegistration() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const isSuperadmin = user?.role === 'superadmin';
   const [items, setItems] = useState([]);
   const [hosts, setHosts] = useState([]);
   const [locations, setLocations] = useState([]);
   const [purposes, setPurposes] = useState([]);
+  const [defaultHostId, setDefaultHostId] = useState('');
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [qrPreview, setQrPreview] = useState(null);
+
+  const DATE_FILTERS = [
+    { key: 'all',      label: t('preregistrations.filters.all') },
+    { key: 'today',    label: t('preregistrations.filters.today') },
+    { key: 'tomorrow', label: t('preregistrations.filters.tomorrow') },
+    { key: 'week',     label: t('preregistrations.filters.week') },
+  ];
+
+  const statusConfig = {
+    pending:    { label: t('status.pending'),   cls: 'bg-yellow-100 text-yellow-700' },
+    checked_in: { label: t('status.checkedIn'), cls: 'bg-green-100 text-green-700' },
+    expired:    { label: t('status.expired'),   cls: 'bg-gray-100 text-gray-500' },
+    cancelled:  { label: t('status.cancelled'), cls: 'bg-red-100 text-red-700' },
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -214,34 +167,34 @@ export default function PreRegistration() {
       const res = await client.get('/preregistrations', { params: { date_filter: dateFilter, status: 'pending' } });
       setItems(res.data);
     } catch {
-      showToast('Fehler beim Laden', 'error');
+      showToast(t('common.error'), 'error');
     } finally {
       setLoading(false);
     }
-  }, [dateFilter]);
+  }, [dateFilter, t]);
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => {
     Promise.all([client.get('/hosts'), client.get('/locations'), client.get('/visit-purposes')])
-      .then(([h, l, p]) => { setHosts(h.data); setLocations(l.data); setPurposes(p.data); })
+      .then(([h, l, p]) => {
+        setHosts(h.data);
+        setLocations(l.data);
+        setPurposes(p.data);
+        const match = h.data.find(host => host.email === user?.email);
+        if (match) setDefaultHostId(String(match.id));
+      })
       .catch(() => {});
-  }, []);
+  }, [user]);
 
-  const handleCreate = async ({ guests, ...shared }) => {
+  const handleCreate = async (data) => {
     setSubmitting(true);
     try {
-      if (guests.length === 1) {
-        await client.post('/preregistrations', { ...guests[0], ...shared });
-      } else {
-        await client.post('/preregistrations/batch', { guests, ...shared });
-      }
-      showToast(guests.length > 1
-        ? `${guests.length} Vorregistrierungen erstellt`
-        : 'Vorregistrierung erstellt');
+      await client.post('/preregistrations', data);
+      showToast(t('preregistrations.created'));
       setShowModal(false);
       loadData();
     } catch (err) {
-      showToast(err.response?.data?.error || 'Fehler', 'error');
+      showToast(err.response?.data?.error || t('common.error'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -250,37 +203,34 @@ export default function PreRegistration() {
   const handleCancel = async (id) => {
     try {
       await client.delete(`/preregistrations/${id}`);
-      showToast('Vorregistrierung storniert');
+      showToast(t('preregistrations.cancelled'));
       loadData();
     } catch {
-      showToast('Fehler beim Stornieren', 'error');
+      showToast(t('common.error'), 'error');
     }
   };
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`Vorregistrierung von „${name}" dauerhaft aus der Datenbank löschen?`)) return;
+    if (!window.confirm(`${t('preregistrations.deleteConfirm')} (${name})`)) return;
     try {
       await client.delete(`/preregistrations/${id}`);
-      showToast('Vorregistrierung gelöscht');
+      showToast(t('preregistrations.deleted'));
       loadData();
     } catch {
-      showToast('Fehler beim Löschen', 'error');
+      showToast(t('common.error'), 'error');
     }
   };
-
-  // Track which group_ids are expanded (collapsed by default for groups)
-  const groupIds = [...new Set(items.filter(i => i.group_id).map(i => i.group_id))];
 
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Vorregistrierungen</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{items.length} Einträge</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('preregistrations.title')}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{items.length} {t('common.entries')}</p>
         </div>
         <button onClick={() => setShowModal(true)}
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-sm transition-colors">
-          <Plus size={18} /> Vorregistrierung erstellen
+          <Plus size={18} /> {t('preregistrations.add')}
         </button>
       </div>
 
@@ -298,12 +248,12 @@ export default function PreRegistration() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
             <tr>
-              <th className="text-left px-6 py-3">Besucher</th>
-              <th className="text-left px-6 py-3">Gastgeber</th>
-              <th className="text-left px-6 py-3">Erwartet</th>
-              <th className="text-left px-6 py-3">Zweck</th>
-              <th className="text-left px-6 py-3">Status</th>
-              <th className="text-left px-6 py-3">QR-Code</th>
+              <th className="text-left px-6 py-3">{t('preregistrations.table.visitor')}</th>
+              <th className="text-left px-6 py-3">{t('preregistrations.table.host')}</th>
+              <th className="text-left px-6 py-3">{t('preregistrations.table.expected')}</th>
+              <th className="text-left px-6 py-3">{t('preregistrations.table.purpose')}</th>
+              <th className="text-left px-6 py-3">{t('preregistrations.table.status')}</th>
+              <th className="text-left px-6 py-3">{t('preregistrations.table.qr')}</th>
               <th className="px-6 py-3"></th>
             </tr>
           </thead>
@@ -315,30 +265,22 @@ export default function PreRegistration() {
             ) : items.length === 0 ? (
               <tr><td colSpan={8} className="text-center py-16 text-gray-400">
                 <CalendarCheck size={32} className="mx-auto mb-2 opacity-30" />
-                Keine Vorregistrierungen gefunden
+                {t('preregistrations.noData')}
               </td></tr>
             ) : items.map(item => {
               const sc = statusConfig[item.status] || statusConfig.pending;
-              const isGroupMember = !!item.group_id;
               return (
-                <tr key={item.id} className={`hover:bg-gray-50 transition-colors ${isGroupMember ? 'border-l-2 border-l-blue-200' : ''}`}>
+                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div>
-                        <p className="font-medium text-gray-900">{item.visitor_first_name} {item.visitor_last_name}</p>
-                        <p className="text-xs text-gray-400">{item.visitor_company || item.visitor_email || '–'}</p>
-                      </div>
-                      {isGroupMember && (
-                        <span className="flex-shrink-0 flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-medium">
-                          <Users size={10} />{item.group_size}
-                        </span>
-                      )}
+                    <div>
+                      <p className="font-medium text-gray-900">{item.visitor_first_name} {item.visitor_last_name}</p>
+                      <p className="text-xs text-gray-400">{item.visitor_company || item.visitor_email || '–'}</p>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-gray-600">{item.host_name || '–'}</td>
                   <td className="px-6 py-4 text-gray-600">
                     <p>{item.expected_date ? format(parseISO(item.expected_date), 'dd.MM.yyyy', { locale: de }) : '–'}</p>
-                    {item.expected_time && <p className="text-xs text-gray-400">{item.expected_time} Uhr</p>}
+                    {item.expected_time && <p className="text-xs text-gray-400">{item.expected_time}</p>}
                   </td>
                   <td className="px-6 py-4 text-gray-600">{item.purpose || '–'}</td>
                   <td className="px-6 py-4">
@@ -348,7 +290,7 @@ export default function PreRegistration() {
                     {item.qr_code && (
                       <button onClick={() => setQrPreview(item.qr_code)}
                         className="flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-800 font-medium">
-                        <QrCode size={14} /><span>Anzeigen</span><ZoomIn size={12} />
+                        <QrCode size={14} /><span>{t('preregistrations.table.qr')}</span><ZoomIn size={12} />
                       </button>
                     )}
                   </td>
@@ -356,13 +298,13 @@ export default function PreRegistration() {
                     {isSuperadmin ? (
                       <button
                         onClick={() => handleDelete(item.id, `${item.visitor_first_name} ${item.visitor_last_name}`)}
-                        title="Dauerhaft löschen"
+                        title={t('common.delete')}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Trash2 size={15} />
                       </button>
                     ) : item.status === 'pending' && (
                       <button onClick={() => handleCancel(item.id)}
-                        title="Stornieren"
+                        title={t('preregistrations.cancelConfirm')}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                         <Trash2 size={15} />
                       </button>
@@ -376,13 +318,13 @@ export default function PreRegistration() {
       </div>
 
       {showModal && (
-        <Modal title="Vorregistrierung erstellen" onClose={() => setShowModal(false)} size="lg">
-          <PreRegForm onSubmit={handleCreate} hosts={hosts} locations={locations} purposes={purposes} loading={submitting} />
+        <Modal title={t('preregistrations.modalTitle')} onClose={() => setShowModal(false)} size="lg">
+          <PreRegForm onSubmit={handleCreate} hosts={hosts} locations={locations} purposes={purposes} loading={submitting} defaultHostId={defaultHostId} />
         </Modal>
       )}
 
       {qrPreview && (
-        <Modal title="QR-Code" onClose={() => setQrPreview(null)} size="sm">
+        <Modal title={t('preregistrations.qrTitle')} onClose={() => setQrPreview(null)} size="sm">
           <div className="text-center space-y-4">
             <img
               src={`/api/preregistrations/qr-image/${encodeURIComponent(qrPreview)}`}
