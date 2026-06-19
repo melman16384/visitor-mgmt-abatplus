@@ -10,6 +10,9 @@ const { authenticate } = require('./middleware/auth');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust Nginx reverse proxy (needed for rate limiting + X-Forwarded-For)
+app.set('trust proxy', 1);
+
 // Ensure uploads directory
 const uploadsDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadsDir)) {
