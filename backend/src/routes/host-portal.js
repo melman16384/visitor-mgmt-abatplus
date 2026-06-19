@@ -57,10 +57,17 @@ function parseIdToken(idToken) {
   } catch { return {}; }
 }
 
+function getFrontendUrl(req) {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host  = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
 // GET /auth/microsoft — redirect browser to Microsoft login
 router.get('/auth/microsoft', (req, res) => {
   const cfg = getMsSsoConfig();
-  const frontendUrl = process.env.FRONTEND_URL || 'https://visitor.luwilab.work';
+  const frontendUrl = getFrontendUrl(req);
   if (!cfg.enabled || !cfg.clientId || !cfg.tenantId) {
     return res.redirect(`${frontendUrl}/host/login?error=sso_not_configured`);
   }
@@ -86,7 +93,7 @@ router.get('/auth/microsoft', (req, res) => {
 // GET /auth/microsoft/callback — Microsoft redirects here after auth
 router.get('/auth/microsoft/callback', async (req, res) => {
   const { code, state, error } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || 'https://visitor.luwilab.work';
+  const frontendUrl = getFrontendUrl(req);
 
   if (error) return res.redirect(`${frontendUrl}/host/login?error=${encodeURIComponent(error)}`);
 
