@@ -5,6 +5,7 @@ import QRScanner from '../components/QRScanner';
 import KioskHeader from '../components/KioskHeader';
 import api from '../api/client';
 import { useKioskLang } from '../context/KioskLangContext';
+import useKioskIdle from '../hooks/useKioskIdle';
 
 function AbatIdInput({ onSubmit, loading, error }) {
   const [digits, setDigits] = useState('');
@@ -49,6 +50,9 @@ function AbatIdInput({ onSubmit, loading, error }) {
 export default function KioskCheckout() {
   const navigate = useNavigate();
   const { t } = useKioskLang();
+
+  useKioskIdle(60_000, () => navigate('/kiosk'));
+
   const [tab, setTab] = useState('scan');
   const [tabKey, setTabKey] = useState(0);
   const [state, setState] = useState('idle');

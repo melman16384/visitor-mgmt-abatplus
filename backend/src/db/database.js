@@ -201,13 +201,19 @@ if (!hostsInfo.find(c => c.name === 'locked_until')) {
   db.exec('ALTER TABLE hosts ADD COLUMN locked_until DATETIME');
 }
 
-// Add lockout columns to users if missing
+// Add lockout + 2FA columns to users if missing
 const usersInfo = db.prepare("PRAGMA table_info(users)").all();
 if (!usersInfo.find(c => c.name === 'failed_login_attempts')) {
   db.exec('ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0');
 }
 if (!usersInfo.find(c => c.name === 'locked_until')) {
   db.exec('ALTER TABLE users ADD COLUMN locked_until DATETIME');
+}
+if (!usersInfo.find(c => c.name === 'totp_secret')) {
+  db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
+}
+if (!usersInfo.find(c => c.name === 'totp_enabled')) {
+  db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0');
 }
 
 // Create initial admin user from env if no users exist yet

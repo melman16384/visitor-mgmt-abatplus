@@ -5,12 +5,15 @@ import SignaturePad from '../components/SignaturePad';
 import KioskHeader from '../components/KioskHeader';
 import api from '../api/client';
 import { useKioskLang } from '../context/KioskLangContext';
+import useKioskIdle from '../hooks/useKioskIdle';
 
 const STATE_RANK = { form: 0, privacy: 1, success: 2, error: 2 };
 
 export default function KioskManual() {
   const navigate = useNavigate();
   const { t } = useKioskLang();
+
+  useKioskIdle(60_000, () => navigate('/kiosk'));
 
   const [state, setState] = useState('form');
   const [animKey, setAnimKey] = useState(0);

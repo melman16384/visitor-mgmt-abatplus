@@ -309,6 +309,12 @@ function UsersTab() {
     catch { showToast(t('common.error'), 'error'); }
   };
 
+  const handleReset2FA = async (id) => {
+    if (!confirm('2FA für diesen Benutzer zurücksetzen?')) return;
+    try { await client.post(`/users/${id}/reset-2fa`); showToast('2FA zurückgesetzt'); load(); }
+    catch { showToast(t('common.error'), 'error'); }
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -326,6 +332,7 @@ function UsersTab() {
               <th className="text-left px-5 py-3">{t('common.role')}</th>
               <th className="text-left px-5 py-3">{t('settings.users.locations')}</th>
               <th className="text-left px-5 py-3">{t('common.status')}</th>
+              <th className="text-left px-5 py-3">2FA</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -363,9 +370,19 @@ function UsersTab() {
                   )}
                 </td>
                 <td className="px-5 py-4">
+                  {u.totp_enabled ? (
+                    <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-semibold">Aktiv</span>
+                  ) : (
+                    <span className="text-gray-300 text-xs">–</span>
+                  )}
+                </td>
+                <td className="px-5 py-4">
                   <div className="flex items-center gap-1 justify-end">
                     <button onClick={() => openEdit(u)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit2 size={14} /></button>
                     <button onClick={() => setResetPw({ userId: u.id, password: '' })} className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Passwort zurücksetzen"><Key size={14} /></button>
+                    {u.totp_enabled && (
+                      <button onClick={() => handleReset2FA(u.id)} className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="2FA zurücksetzen"><ShieldCheck size={14} /></button>
+                    )}
                     {isLocked(u) && (
                       <button onClick={() => handleUnlock(u.id)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Account entsperren"><RefreshCw size={14} /></button>
                     )}
@@ -1018,6 +1035,163 @@ function MicrosoftSsoTab() {
   );
 }
 
+function TwoFATab() {
+  const [step, setStep] = useState('idle'); // idle | setup | confirm | active | disabling
+  const [qr, setQr] = useState('');
+  const [secret, setSecret] = useState('');
+  const [code, setCode] = useState('');
+  const [disableForm, setDisableForm] = useState({ password: '', code: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const { user } = useAuth();
+  const [twoFAEnabled, setTwoFAEnabled] = useState(false);
+
+  useEffect(() => {
+    client.get('/auth/me').then(r => setTwoFAEnabled(!!r.data.user?.totp_enabled)).catch(() => {});
+  }, []);
+
+  const startSetup = async () => {
+    setError(''); setLoading(true);
+    try {
+      const res = await client.post('/auth/2fa/setup');
+      setQr(res.data.qr);
+      setSecret(res.data.secret);
+      setCode('');
+      setStep('setup');
+    } catch { setError('Fehler beim Einrichten'); }
+    finally { setLoading(false); }
+  };
+
+  const confirmSetup = async (e) => {
+    e.preventDefault(); setError(''); setLoading(true);
+    try {
+      await client.post('/auth/2fa/confirm', { code });
+      setTwoFAEnabled(true);
+      setStep('idle');
+      showToast('2FA erfolgreich aktiviert');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Ungültiger Code');
+    } finally { setLoading(false); }
+  };
+
+  const handleDisable = async (e) => {
+    e.preventDefault(); setError(''); setLoading(true);
+    try {
+      await client.post('/auth/2fa/disable', disableForm);
+      setTwoFAEnabled(false);
+      setDisableForm({ password: '', code: '' });
+      setStep('idle');
+      showToast('2FA deaktiviert');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Fehler beim Deaktivieren');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      {/* Status banner */}
+      <div className={`flex items-center gap-3 rounded-xl px-5 py-4 ${twoFAEnabled ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
+        <ShieldCheck size={22} className={twoFAEnabled ? 'text-green-600' : 'text-gray-400'} />
+        <div>
+          <p className={`font-semibold text-sm ${twoFAEnabled ? 'text-green-800' : 'text-gray-700'}`}>
+            {twoFAEnabled ? '2FA ist aktiv' : '2FA ist nicht eingerichtet'}
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {twoFAEnabled
+              ? 'Beim nächsten Login wird ein Code aus Ihrer Authenticator-App benötigt.'
+              : 'Schützen Sie Ihren Account mit einem zweiten Faktor (TOTP).'}
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>
+      )}
+
+      {/* Setup flow */}
+      {!twoFAEnabled && step === 'idle' && (
+        <button onClick={startSetup} disabled={loading}
+          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
+          <ShieldCheck size={16} />
+          {loading ? 'Wird vorbereitet…' : '2FA einrichten'}
+        </button>
+      )}
+
+      {step === 'setup' && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-5">
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-1">Schritt 1 – QR-Code scannen</h3>
+            <p className="text-sm text-gray-500">Öffnen Sie Ihre Authenticator-App (z. B. Google Authenticator, Microsoft Authenticator oder Authy) und scannen Sie diesen QR-Code.</p>
+          </div>
+          <div className="flex justify-center">
+            <img src={qr} alt="2FA QR-Code" className="w-48 h-48 rounded-xl border border-gray-200 p-2" />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Oder manuell eingeben:</p>
+            <code className="block bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono break-all text-gray-700 select-all">{secret}</code>
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-1">Schritt 2 – Code bestätigen</h3>
+            <p className="text-sm text-gray-500 mb-3">Geben Sie den 6-stelligen Code aus der App ein, um 2FA zu aktivieren.</p>
+            <form onSubmit={confirmSetup} className="flex gap-2">
+              <input
+                type="text" inputMode="numeric"
+                value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-primary-500"
+                required autoFocus />
+              <button type="submit" disabled={loading || code.length !== 6}
+                className="bg-primary-600 hover:bg-primary-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 text-sm">
+                {loading ? '…' : 'Aktivieren'}
+              </button>
+            </form>
+          </div>
+          <button onClick={() => { setStep('idle'); setError(''); }} className="text-sm text-gray-400 hover:text-gray-600">Abbrechen</button>
+        </div>
+      )}
+
+      {/* Disable flow */}
+      {twoFAEnabled && step === 'idle' && (
+        <button onClick={() => setStep('disabling')}
+          className="flex items-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 font-semibold px-5 py-2.5 rounded-lg transition-colors text-sm">
+          2FA deaktivieren
+        </button>
+      )}
+
+      {step === 'disabling' && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+          <h3 className="font-semibold text-gray-900">2FA deaktivieren</h3>
+          <p className="text-sm text-gray-500">Geben Sie zur Bestätigung Ihr Passwort und den aktuellen Code aus Ihrer Authenticator-App ein.</p>
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
+          <form onSubmit={handleDisable} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Passwort</label>
+              <input type="password" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                value={disableForm.password} onChange={e => setDisableForm(f => ({ ...f, password: e.target.value }))} required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Authenticator-Code</label>
+              <input type="text" inputMode="numeric" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-primary-500"
+                value={disableForm.code} onChange={e => setDisableForm(f => ({ ...f, code: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                placeholder="000000" required />
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" disabled={loading}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 text-sm">
+                {loading ? 'Wird deaktiviert…' : 'Deaktivieren'}
+              </button>
+              <button type="button" onClick={() => { setStep('idle'); setError(''); }}
+                className="border border-gray-300 text-gray-600 hover:bg-gray-50 font-semibold px-4 py-2 rounded-lg transition-colors text-sm">
+                Abbrechen
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('locations');
@@ -1033,6 +1207,7 @@ export default function Settings() {
     { key: 'gdpr', label: t('settings.tabs.gdpr'), icon: ShieldCheck },
     { key: 'email', label: t('settings.tabs.email'), icon: Mail },
     { key: 'password', label: t('settings.tabs.password'), icon: Key },
+    { key: '2fa', label: 'Zwei-Faktor (2FA)', icon: ShieldCheck },
   ];
 
   return (
@@ -1068,6 +1243,7 @@ export default function Settings() {
         {activeTab === 'gdpr' && <GdprTab />}
         {activeTab === 'email' && <EmailTab />}
         {activeTab === 'password' && <PasswordTab />}
+        {activeTab === '2fa' && <TwoFATab />}
       </div>
     </div>
   );

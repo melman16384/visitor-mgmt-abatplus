@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, LogOut } from 'lucide-react';
 import { useKioskLang } from '../context/KioskLangContext';
+import useKioskIdle from '../hooks/useKioskIdle';
+import KioskScreensaver from '../components/KioskScreensaver';
 
 const FLAG  = { de: '🇩🇪', en: '🇬🇧' };
 const LABEL = { de: 'DE',   en: 'EN'  };
@@ -8,6 +11,11 @@ const LABEL = { de: 'DE',   en: 'EN'  };
 export default function KioskStart() {
   const navigate = useNavigate();
   const { t, lang, setLang, languages } = useKioskLang();
+  const [screensaver, setScreensaver] = useState(false);
+
+  useKioskIdle(3 * 60 * 1000, () => setScreensaver(true));
+
+  if (screensaver) return <KioskScreensaver onDismiss={() => setScreensaver(false)} />;
 
   return (
     <div className="min-h-screen bg-abat-dunkelgrau flex flex-col select-none">

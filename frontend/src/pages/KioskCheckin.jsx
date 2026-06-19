@@ -6,6 +6,7 @@ import SignaturePad from '../components/SignaturePad';
 import KioskHeader from '../components/KioskHeader';
 import api from '../api/client';
 import { useKioskLang } from '../context/KioskLangContext';
+import useKioskIdle from '../hooks/useKioskIdle';
 
 const STATE_RANK = { scan: 0, confirm: 1, privacy: 2, success: 3, error: 3 };
 
@@ -38,6 +39,8 @@ export default function KioskCheckin() {
   const { t } = useKioskLang();
 
   const [state, setState] = useState('scan');
+
+  useKioskIdle(60_000, () => navigate('/kiosk'));
   const [animKey, setAnimKey] = useState(0);
   const dirRef = useRef('forward');
 
