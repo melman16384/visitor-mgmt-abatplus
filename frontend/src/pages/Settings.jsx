@@ -1074,6 +1074,109 @@ function LdapTab() {
   );
 }
 
+function MicrosoftSsoTab() {
+  const inp = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500';
+  const label = 'block text-sm font-medium text-gray-700 mb-1';
+
+  const [cfg, setCfg] = useState({
+    ms_sso_enabled: '0',
+    ms_client_id: '',
+    ms_client_secret: '',
+    ms_tenant_id: '',
+  });
+  const [showSecret, setShowSecret] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    client.get('/settings/ms-sso').then(r => setCfg(r.data)).catch(() => {});
+  }, []);
+
+  const set = (k, v) => setCfg(c => ({ ...c, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const r = await client.put('/settings/ms-sso', cfg);
+      setCfg(r.data);
+      showToast('Microsoft SSO gespeichert');
+    } catch {
+      showToast('Fehler beim Speichern', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isEnabled = cfg.ms_sso_enabled === '1';
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-6">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900 mb-1">Microsoft Single Sign-On</h2>
+          <p className="text-sm text-gray-500">
+            Mitarbeiter können sich über ihr Microsoft-Konto (Azure AD / Entra ID) am Gastgeber-Portal anmelden und werden automatisch als Gastgeber angelegt.
+          </p>
+        </div>
+
+        {/* Enable toggle */}
+        <div className="flex items-center justify-between py-3 border-b border-gray-100">
+          <p className="font-semibold text-gray-800 text-sm">Microsoft SSO aktivieren</p>
+          <button onClick={() => set('ms_sso_enabled', isEnabled ? '0' : '1')}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isEnabled ? 'bg-primary-600' : 'bg-gray-300'}`}>
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className={label}>Client-ID (Application ID)</label>
+            <input className={inp} value={cfg.ms_client_id}
+              onChange={e => set('ms_client_id', e.target.value)}
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+          </div>
+          <div>
+            <label className={label}>Client-Secret</label>
+            <div className="relative">
+              <input type={showSecret ? 'text' : 'password'} className={`${inp} pr-10`}
+                value={cfg.ms_client_secret}
+                onChange={e => set('ms_client_secret', e.target.value)}
+                placeholder="••••••••" />
+              <button type="button" onClick={() => setShowSecret(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className={label}>Tenant-ID (Verzeichnis-ID)</label>
+            <input className={inp} value={cfg.ms_tenant_id}
+              onChange={e => set('ms_tenant_id', e.target.value)}
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+          </div>
+        </div>
+
+        {/* Setup instructions */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm space-y-2">
+          <p className="font-semibold text-blue-800">Azure App Registration – Anleitung</p>
+          <ol className="list-decimal list-inside text-blue-700 space-y-1 text-xs">
+            <li>Öffnen Sie das <strong>Azure Portal</strong> → App-Registrierungen → Neue Registrierung</li>
+            <li>Name: z. B. „Visitor Management", Kontotyp: <em>Nur dieser Organisation</em></li>
+            <li>Redirect-URI: <code className="bg-blue-100 px-1 rounded">https://visitor.luwilab.work/api/host-portal/auth/microsoft/callback</code></li>
+            <li>Nach der Erstellung: Client-ID und Tenant-ID aus der Übersicht kopieren</li>
+            <li>Unter <em>Zertifikate &amp; Geheimnisse</em>: Neues Client-Secret erstellen und kopieren</li>
+            <li>Unter <em>API-Berechtigungen</em>: <code className="bg-blue-100 px-1 rounded">openid profile email</code> sicherstellen</li>
+          </ol>
+        </div>
+
+        <button onClick={handleSave} disabled={saving}
+          className="bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50">
+          {saving ? 'Speichern…' : 'Einstellungen speichern'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('locations');
@@ -1086,6 +1189,7 @@ export default function Settings() {
     { key: 'auto-checkout', label: t('settings.tabs.autoCheckout'), icon: Clock, superadminOnly: true },
     { key: 'printer', label: t('settings.tabs.printer'), icon: Printer },
     { key: 'ldap', label: t('settings.tabs.ldap'), icon: Server, superadminOnly: true },
+    { key: 'ms-sso', label: 'Microsoft SSO', icon: PlugZap, superadminOnly: true },
     { key: 'gdpr', label: t('settings.tabs.gdpr'), icon: ShieldCheck },
     { key: 'email', label: t('settings.tabs.email'), icon: Mail },
     { key: 'password', label: t('settings.tabs.password'), icon: Key },
@@ -1120,6 +1224,7 @@ export default function Settings() {
         {activeTab === 'users' && user?.role === 'superadmin' && <UsersTab />}
         {activeTab === 'auto-checkout' && user?.role === 'superadmin' && <AutoCheckoutTab />}
         {activeTab === 'ldap' && user?.role === 'superadmin' && <LdapTab />}
+        {activeTab === 'ms-sso' && user?.role === 'superadmin' && <MicrosoftSsoTab />}
         {activeTab === 'printer' && <PrinterTab />}
         {activeTab === 'gdpr' && <GdprTab />}
         {activeTab === 'email' && <EmailTab />}

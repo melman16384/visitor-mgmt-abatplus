@@ -1,12 +1,144 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const https = require('https');
+const crypto = require('crypto');
 const db = require('../db/database');
 const { log } = require('../services/audit-log');
 const { generateQR } = require('../services/qrcode');
 const { sendPreRegistrationQR } = require('../services/email');
 
 const router = express.Router();
+
+// ── Microsoft SSO helpers ──────────────────────────────────────────────────────
+
+const oauthStates = new Map(); // state token → timestamp (CSRF protection)
+
+function getMsSsoConfig() {
+  const get = (key) => db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key)?.value || '';
+  return {
+    enabled:      get('ms_sso_enabled') === '1',
+    clientId:     get('ms_client_id'),
+    clientSecret: get('ms_client_secret'),
+    tenantId:     get('ms_tenant_id'),
+  };
+}
+
+function httpsPost(hostname, path, body) {
+  return new Promise((resolve, reject) => {
+    const encoded = new URLSearchParams(body).toString();
+    const req = https.request({
+      hostname, path, method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(encoded) },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) reject(new Error(parsed.error_description || parsed.error));
+          else resolve(parsed);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(encoded);
+    req.end();
+  });
+}
+
+function parseIdToken(idToken) {
+  try {
+    const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64url').toString('utf8'));
+    return {
+      name:  payload.name || payload.preferred_username?.split('@')[0] || '',
+      email: payload.email || payload.preferred_username || payload.upn || '',
+    };
+  } catch { return {}; }
+}
+
+// GET /auth/microsoft — redirect browser to Microsoft login
+router.get('/auth/microsoft', (req, res) => {
+  const cfg = getMsSsoConfig();
+  const frontendUrl = process.env.FRONTEND_URL || 'https://visitor.luwilab.work';
+  if (!cfg.enabled || !cfg.clientId || !cfg.tenantId) {
+    return res.redirect(`${frontendUrl}/host-login?error=sso_not_configured`);
+  }
+  // Purge stale states (older than 10 min)
+  for (const [k, ts] of oauthStates) {
+    if (Date.now() - ts > 600_000) oauthStates.delete(k);
+  }
+  const state = crypto.randomBytes(16).toString('hex');
+  oauthStates.set(state, Date.now());
+
+  const redirectUri = `${frontendUrl}/api/host-portal/auth/microsoft/callback`;
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    response_mode: 'query',
+    scope: 'openid profile email',
+    state,
+  });
+  res.redirect(`https://login.microsoftonline.com/${cfg.tenantId}/oauth2/v2.0/authorize?${params}`);
+});
+
+// GET /auth/microsoft/callback — Microsoft redirects here after auth
+router.get('/auth/microsoft/callback', async (req, res) => {
+  const { code, state, error } = req.query;
+  const frontendUrl = process.env.FRONTEND_URL || 'https://visitor.luwilab.work';
+
+  if (error) return res.redirect(`${frontendUrl}/host-login?error=${encodeURIComponent(error)}`);
+
+  if (!state || !oauthStates.has(state)) {
+    return res.redirect(`${frontendUrl}/host-login?error=invalid_state`);
+  }
+  oauthStates.delete(state);
+
+  const cfg = getMsSsoConfig();
+  const redirectUri = `${frontendUrl}/api/host-portal/auth/microsoft/callback`;
+
+  try {
+    const tokens = await httpsPost(
+      'login.microsoftonline.com',
+      `/${cfg.tenantId}/oauth2/v2.0/token`,
+      {
+        client_id:     cfg.clientId,
+        client_secret: cfg.clientSecret,
+        code,
+        redirect_uri:  redirectUri,
+        grant_type:    'authorization_code',
+        scope:         'openid profile email',
+      }
+    );
+
+    const { name, email } = parseIdToken(tokens.id_token);
+    if (!email) return res.redirect(`${frontendUrl}/host-login?error=no_email`);
+
+    // Find or auto-create host
+    let host = db.prepare('SELECT * FROM hosts WHERE email = ?').get(email);
+    if (!host) {
+      const ins = db.prepare('INSERT INTO hosts (name, email, active) VALUES (?, ?, 1)').run(name || email, email);
+      host = db.prepare('SELECT * FROM hosts WHERE id = ?').get(ins.lastInsertRowid);
+    } else if (!host.active) {
+      db.prepare('UPDATE hosts SET active = 1, name = ? WHERE id = ?').run(name || host.name, host.id);
+      host = db.prepare('SELECT * FROM hosts WHERE id = ?').get(host.id);
+    }
+
+    const token = jwt.sign(
+      { type: 'host', hostId: host.id },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '12h' }
+    );
+
+    try { log('LOGIN', host.email, `Microsoft SSO: ${host.name}`); } catch {}
+
+    res.redirect(`${frontendUrl}/host-login?token=${token}`);
+  } catch (err) {
+    console.error('[MS SSO] Callback error:', err.message);
+    res.redirect(`${frontendUrl}/host-login?error=auth_failed`);
+  }
+});
 
 // Middleware: Host-JWT prüfen
 function authenticateHost(req, res, next) {
