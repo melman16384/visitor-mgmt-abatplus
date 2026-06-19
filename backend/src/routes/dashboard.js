@@ -30,7 +30,7 @@ router.get('/recent', authenticate, (req, res) => {
   const rows = db.prepare(`
     SELECT v.id, v.checked_in_at, v.checked_out_at, v.status, v.badge_number, v.purpose,
            vi.first_name, vi.last_name, vi.company, vi.abat_id,
-           h.name as host_name,
+           COALESCE(h.name, v.host_name_free) as host_name,
            vi.id as visitor_id
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id

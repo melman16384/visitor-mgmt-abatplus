@@ -11,7 +11,7 @@ router.get('/daily', authenticate, (req, res) => {
 
   const rows = db.prepare(`
     SELECT v.*, vi.first_name, vi.last_name, vi.company, vi.email,
-           h.name as host_name, l.name as location_name
+           COALESCE(h.name, v.host_name_free) as host_name, l.name as location_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
     LEFT JOIN hosts h ON v.host_id = h.id
@@ -41,7 +41,7 @@ router.get('/monthly', authenticate, (req, res) => {
 
   const visits = db.prepare(`
     SELECT v.*, vi.first_name, vi.last_name, vi.company,
-           h.name as host_name
+           COALESCE(h.name, v.host_name_free) as host_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
     LEFT JOIN hosts h ON v.host_id = h.id
@@ -90,7 +90,7 @@ router.get('/evacuation', authenticate, (req, res) => {
   const rows = db.prepare(`
     SELECT v.id, v.badge_number, v.checked_in_at, v.purpose,
            vi.first_name, vi.last_name, vi.company,
-           h.name as host_name,
+           COALESCE(h.name, v.host_name_free) as host_name,
            l.id as location_id, l.name as location_name, l.address as location_address
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
@@ -126,7 +126,7 @@ router.get('/export', authenticate, (req, res) => {
     SELECT v.id, v.badge_number, v.purpose, v.status, v.notes,
            v.checked_in_at, v.checked_out_at,
            vi.first_name, vi.last_name, vi.company, vi.email,
-           h.name as host_name,
+           COALESCE(h.name, v.host_name_free) as host_name,
            l.name as location_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id

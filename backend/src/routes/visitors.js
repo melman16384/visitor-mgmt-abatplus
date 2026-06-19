@@ -46,7 +46,7 @@ router.get('/', authenticate, (req, res) => {
     const rows = db.prepare(`
       SELECT vi.*,
         v.id as visit_id, v.status as visit_status, v.checked_in_at, v.checked_out_at, v.badge_number, v.purpose,
-        h.name as host_name,
+        COALESCE(h.name, v.host_name_free) as host_name,
         l.name as location_name
       FROM visitors vi
       INNER JOIN visits v ON v.visitor_id = vi.id AND v.status = 'completed'
@@ -98,7 +98,7 @@ router.get('/', authenticate, (req, res) => {
   const rows = db.prepare(`
     SELECT vi.*,
       v.id as visit_id, v.status as visit_status, v.checked_in_at, v.checked_out_at, v.badge_number, v.purpose,
-      h.name as host_name, h.id as host_id,
+      COALESCE(h.name, v.host_name_free) as host_name, h.id as host_id,
       l.name as location_name
     FROM visitors vi
     ${visitJoin}
@@ -118,7 +118,7 @@ router.get('/active', authenticate, (req, res) => {
   const { sql: locSql, params: locParams } = locationFilter(req.user);
   const rows = db.prepare(`
     SELECT v.*, vi.first_name, vi.last_name, vi.company, vi.email,
-           h.name as host_name, h.email as host_email,
+           COALESCE(h.name, v.host_name_free) as host_name, h.email as host_email,
            l.name as location_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
@@ -217,7 +217,7 @@ router.get('/:id', authenticate, (req, res) => {
   if (!visitor) return res.status(404).json({ error: 'Besucher nicht gefunden' });
 
   const visits = db.prepare(`
-    SELECT v.*, h.name as host_name, l.name as location_name
+    SELECT v.*, COALESCE(h.name, v.host_name_free) as host_name, l.name as location_name
     FROM visits v
     LEFT JOIN hosts h ON v.host_id = h.id
     LEFT JOIN locations l ON v.location_id = l.id

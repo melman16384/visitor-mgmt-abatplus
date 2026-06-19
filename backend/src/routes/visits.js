@@ -13,7 +13,7 @@ router.post('/checkout-by-qr', (req, res) => {
 
   const visit = db.prepare(`
     SELECT v.*, vis.first_name, vis.last_name, vis.company, vis.email,
-           h.name as host_name, l.name as location_name
+           COALESCE(h.name, v.host_name_free) as host_name, l.name as location_name
     FROM visits v
     JOIN visitors vis ON vis.id = v.visitor_id
     LEFT JOIN hosts h ON h.id = v.host_id
@@ -36,7 +36,7 @@ router.post('/checkout-by-abat-id', (req, res) => {
 
   const visit = db.prepare(`
     SELECT v.*, vis.first_name, vis.last_name, vis.company, vis.email, vis.abat_id,
-           h.name as host_name, l.name as location_name
+           COALESCE(h.name, v.host_name_free) as host_name, l.name as location_name
     FROM visits v
     JOIN visitors vis ON vis.id = v.visitor_id
     LEFT JOIN hosts h ON h.id = v.host_id
@@ -61,7 +61,7 @@ router.get('/search-active', (req, res) => {
   const visits = db.prepare(`
     SELECT v.id, v.badge_number, v.qr_code, v.checked_in_at,
            vis.first_name, vis.last_name, vis.company,
-           h.name as host_name
+           COALESCE(h.name, v.host_name_free) as host_name
     FROM visits v
     JOIN visitors vis ON vis.id = v.visitor_id
     LEFT JOIN hosts h ON h.id = v.host_id
@@ -101,7 +101,7 @@ router.post('/:id/checkout', authenticate, (req, res) => {
 router.get('/:id', authenticate, (req, res) => {
   const visit = db.prepare(`
     SELECT v.*, vi.first_name, vi.last_name, vi.company, vi.email,
-           h.name as host_name, l.name as location_name
+           COALESCE(h.name, v.host_name_free) as host_name, l.name as location_name
     FROM visits v
     JOIN visitors vi ON v.visitor_id = vi.id
     LEFT JOIN hosts h ON v.host_id = h.id
