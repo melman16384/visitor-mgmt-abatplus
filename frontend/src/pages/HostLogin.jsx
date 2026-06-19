@@ -45,7 +45,7 @@ export default function HostLogin() {
         access_denied: 'Zugriff verweigert.',
       };
       setError(messages[err] || `Anmeldefehler: ${err}`);
-      window.history.replaceState({}, '', '/host-login');
+      window.history.replaceState({}, '', '/host/login');
     }
   }, [location.search, navigate]);
 

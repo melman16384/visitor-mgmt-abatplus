@@ -62,7 +62,7 @@ router.get('/auth/microsoft', (req, res) => {
   const cfg = getMsSsoConfig();
   const frontendUrl = process.env.FRONTEND_URL || 'https://visitor.luwilab.work';
   if (!cfg.enabled || !cfg.clientId || !cfg.tenantId) {
-    return res.redirect(`${frontendUrl}/host-login?error=sso_not_configured`);
+    return res.redirect(`${frontendUrl}/host/login?error=sso_not_configured`);
   }
   // Purge stale states (older than 10 min)
   for (const [k, ts] of oauthStates) {
@@ -88,10 +88,10 @@ router.get('/auth/microsoft/callback', async (req, res) => {
   const { code, state, error } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || 'https://visitor.luwilab.work';
 
-  if (error) return res.redirect(`${frontendUrl}/host-login?error=${encodeURIComponent(error)}`);
+  if (error) return res.redirect(`${frontendUrl}/host/login?error=${encodeURIComponent(error)}`);
 
   if (!state || !oauthStates.has(state)) {
-    return res.redirect(`${frontendUrl}/host-login?error=invalid_state`);
+    return res.redirect(`${frontendUrl}/host/login?error=invalid_state`);
   }
   oauthStates.delete(state);
 
@@ -113,7 +113,7 @@ router.get('/auth/microsoft/callback', async (req, res) => {
     );
 
     const { name, email } = parseIdToken(tokens.id_token);
-    if (!email) return res.redirect(`${frontendUrl}/host-login?error=no_email`);
+    if (!email) return res.redirect(`${frontendUrl}/host/login?error=no_email`);
 
     // Find or auto-create host
     let host = db.prepare('SELECT * FROM hosts WHERE email = ?').get(email);
@@ -133,10 +133,10 @@ router.get('/auth/microsoft/callback', async (req, res) => {
 
     try { log('LOGIN', host.email, `Microsoft SSO: ${host.name}`); } catch {}
 
-    res.redirect(`${frontendUrl}/host-login?token=${token}`);
+    res.redirect(`${frontendUrl}/host/login?token=${token}`);
   } catch (err) {
     console.error('[MS SSO] Callback error:', err.message);
-    res.redirect(`${frontendUrl}/host-login?error=auth_failed`);
+    res.redirect(`${frontendUrl}/host/login?error=auth_failed`);
   }
 });
 
