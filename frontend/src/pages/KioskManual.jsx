@@ -103,8 +103,8 @@ export default function KioskManual() {
   if (state === 'success') return (
     <div key={animKey} className={`${animClass} min-h-screen bg-white flex flex-col items-center justify-center px-8`}>
       <div className="max-w-xl w-full text-center">
-        <div className="kiosk-pop-in w-24 h-24 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
-          <CheckCircle size={48} className="text-green-500" />
+        <div className="kiosk-pop-in w-24 h-24 rounded-full bg-abat-lichtblau/30 flex items-center justify-center mx-auto mb-6">
+          <CheckCircle size={48} className="text-abat-blau" />
         </div>
         <h2 className="kiosk-fade-up kiosk-delay-1 text-3xl font-bold text-abat-dunkelgrau mb-2">{t('welcomeMsg')}</h2>
         <p className="kiosk-fade-up kiosk-delay-2 text-xl text-abat-dunkelgrau">{result?.visitor?.first_name} {result?.visitor?.last_name}</p>
