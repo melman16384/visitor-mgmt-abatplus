@@ -2,7 +2,6 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 const db = require('../db/database');
 const { authenticate, requireRole } = require('../middleware/auth');
-const ldapService = require('../services/ldap');
 
 const router = express.Router();
 const adminOnly = [authenticate, requireRole(['superadmin', 'admin'])];
@@ -135,46 +134,6 @@ router.post('/gdpr/cleanup', ...adminOnly, (req, res) => {
   res.json({ anonymized: result.changes, cutoff_date: cutoff, retention_days: days });
 });
 
-// GET /ldap — current LDAP config (password masked)
-router.get('/ldap', ...superadminOnly, (req, res) => {
-  const cfg = ldapService.getConfig();
-  cfg.ldap_bind_password = cfg.ldap_bind_password ? '••••••••' : '';
-  res.json(cfg);
-});
-
-// PUT /ldap — save LDAP config
-router.put('/ldap', ...superadminOnly, (req, res) => {
-  const allowed = [
-    'ldap_enabled', 'ldap_url', 'ldap_bind_dn', 'ldap_base_dn',
-    'ldap_filter', 'ldap_attr_name', 'ldap_attr_email',
-    'ldap_attr_department', 'ldap_attr_phone',
-  ];
-  const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
-  const tx = db.transaction((body) => {
-    for (const key of allowed) {
-      if (key in body) upsert.run(key, String(body[key]));
-    }
-    // Only overwrite password if a real value was sent (not the placeholder)
-    if (body.ldap_bind_password && body.ldap_bind_password !== '••••••••') {
-      upsert.run('ldap_bind_password', body.ldap_bind_password);
-    }
-  });
-  tx(req.body);
-  const cfg = ldapService.getConfig();
-  cfg.ldap_bind_password = cfg.ldap_bind_password ? '••••••••' : '';
-  res.json(cfg);
-});
-
-// POST /ldap/test — test LDAP connection
-router.post('/ldap/test', ...superadminOnly, async (req, res) => {
-  try {
-    await ldapService.testConnection();
-    res.json({ message: 'Verbindung erfolgreich' });
-  } catch (err) {
-    res.status(502).json({ error: `LDAP-Fehler: ${err.message}` });
-  }
-});
-
 // GET /ms-sso — current MS SSO config (secret masked)
 router.get('/ms-sso', ...superadminOnly, (req, res) => {
   const get = (key) => db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key)?.value || '';
@@ -215,16 +174,6 @@ router.get('/ms-sso/status', (req, res) => {
   const enabled = get('ms_sso_enabled') === '1';
   const configured = !!(get('ms_client_id') && get('ms_client_secret') && get('ms_tenant_id'));
   res.json({ available: enabled && configured });
-});
-
-// POST /ldap/sync — sync hosts from LDAP
-router.post('/ldap/sync', ...superadminOnly, async (req, res) => {
-  try {
-    const result = await ldapService.syncHosts();
-    res.json(result);
-  } catch (err) {
-    res.status(502).json({ error: `Sync-Fehler: ${err.message}` });
-  }
 });
 
 module.exports = router;

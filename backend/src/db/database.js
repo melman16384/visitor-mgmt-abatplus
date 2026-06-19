@@ -146,16 +146,6 @@ const settingDefaults = {
   smtp_security: 'starttls',
   privacy_policy_text: 'Bitte fügen Sie hier den Text Ihrer Datenschutzerklärung ein (Einstellungen → Datenschutz).',
   privacy_policy_enabled: 'true',
-  ldap_enabled: 'false',
-  ldap_url: '',
-  ldap_bind_dn: '',
-  ldap_bind_password: '',
-  ldap_base_dn: '',
-  ldap_filter: '(objectClass=user)',
-  ldap_attr_name: 'displayName',
-  ldap_attr_email: 'mail',
-  ldap_attr_department: 'department',
-  ldap_attr_phone: 'telephoneNumber',
 };
 const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
 Object.entries(settingDefaults).forEach(([k, v]) => insertSetting.run(k, v));
