@@ -7,6 +7,33 @@ const { log } = require('../services/audit-log');
 
 const router = express.Router();
 
+const MAX_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
+
+function recordFailedLogin(table, id) {
+  db.prepare(`
+    UPDATE ${table}
+    SET failed_login_attempts = failed_login_attempts + 1,
+        locked_until = CASE
+          WHEN failed_login_attempts + 1 >= ? THEN datetime('now', '+${LOCK_MINUTES} minutes')
+          ELSE locked_until
+        END
+    WHERE id = ?
+  `).run(MAX_ATTEMPTS, id);
+}
+
+function recordSuccessfulLogin(table, id) {
+  db.prepare(`UPDATE ${table} SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?`).run(id);
+}
+
+function checkLocked(user) {
+  if (user.locked_until && new Date(user.locked_until + 'Z') > new Date()) {
+    const remaining = Math.ceil((new Date(user.locked_until + 'Z') - new Date()) / 60000);
+    return `Account gesperrt. Bitte in ${remaining} Minute${remaining !== 1 ? 'n' : ''} erneut versuchen.`;
+  }
+  return null;
+}
+
 // POST /login
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
@@ -19,11 +46,25 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
   }
 
+  const lockMsg = checkLocked(user);
+  if (lockMsg) {
+    try { log('LOGIN_BLOCKED', email, `Account gesperrt bis ${user.locked_until}`); } catch {}
+    return res.status(429).json({ error: lockMsg });
+  }
+
   const valid = bcrypt.compareSync(password, user.password_hash);
   if (!valid) {
-    try { log('LOGIN_FAILED', email, 'Falsches Passwort'); } catch {}
-    return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+    recordFailedLogin('users', user.id);
+    const updated = db.prepare('SELECT failed_login_attempts FROM users WHERE id = ?').get(user.id);
+    const remaining = MAX_ATTEMPTS - updated.failed_login_attempts;
+    try { log('LOGIN_FAILED', email, `Falsches Passwort (Versuch ${updated.failed_login_attempts}/${MAX_ATTEMPTS})`); } catch {}
+    if (remaining <= 0) {
+      return res.status(429).json({ error: `Account gesperrt. Bitte in ${LOCK_MINUTES} Minuten erneut versuchen.` });
+    }
+    return res.status(401).json({ error: `Ungültige Anmeldedaten (noch ${remaining} Versuch${remaining !== 1 ? 'e' : ''})` });
   }
+
+  recordSuccessfulLogin('users', user.id);
 
   const token = jwt.sign(
     { userId: user.id, role: user.role },
@@ -33,8 +74,8 @@ router.post('/login', (req, res) => {
 
   try { log('LOGIN', email, 'Admin-Login erfolgreich'); } catch {}
 
-  const { password_hash, ...userWithoutHash } = user;
-  res.json({ token, user: userWithoutHash });
+  const { password_hash, failed_login_attempts, locked_until, ...userWithoutSensitive } = user;
+  res.json({ token, user: userWithoutSensitive });
 });
 
 // GET /me

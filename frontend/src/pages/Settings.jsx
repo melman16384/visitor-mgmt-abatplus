@@ -296,6 +296,13 @@ function UsersTab() {
     catch (err) { showToast(err.response?.data?.error || t('common.error'), 'error'); }
   };
 
+  const handleUnlock = async (id) => {
+    try { await client.post(`/users/${id}/unlock`); showToast('Account entsperrt'); load(); }
+    catch { showToast(t('common.error'), 'error'); }
+  };
+
+  const isLocked = (u) => u.locked_until && new Date(u.locked_until + 'Z') > new Date();
+
   const handleResetPassword = async () => {
     if (!resetPw.password || resetPw.password.length < 8) { showToast(t('common.error'), 'error'); return; }
     try { await client.post(`/users/${resetPw.userId}/reset-password`, { password: resetPw.password }); showToast(t('settings.users.passwordReset')); setResetPw({ userId: null, password: '' }); }
@@ -347,12 +354,21 @@ function UsersTab() {
                   )}
                 </td>
                 <td className="px-5 py-4">
-                  {u.active ? <span className="text-green-600 text-xs font-semibold">{t('common.active')}</span> : <span className="text-gray-400 text-xs font-semibold">{t('common.inactive')}</span>}
+                  {isLocked(u) ? (
+                    <span className="text-red-600 text-xs font-semibold">Gesperrt</span>
+                  ) : u.active ? (
+                    <span className="text-green-600 text-xs font-semibold">{t('common.active')}</span>
+                  ) : (
+                    <span className="text-gray-400 text-xs font-semibold">{t('common.inactive')}</span>
+                  )}
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-1 justify-end">
                     <button onClick={() => openEdit(u)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit2 size={14} /></button>
                     <button onClick={() => setResetPw({ userId: u.id, password: '' })} className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Passwort zurücksetzen"><Key size={14} /></button>
+                    {isLocked(u) && (
+                      <button onClick={() => handleUnlock(u.id)} className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Account entsperren"><RefreshCw size={14} /></button>
+                    )}
                     {u.id !== currentUser?.id && u.active && (
                       <button onClick={() => handleDeactivate(u.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
                     )}

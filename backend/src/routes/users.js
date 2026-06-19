@@ -22,9 +22,15 @@ function setUserLocations(userId, locationIds) {
   }
 }
 
+// POST /:id/unlock — reset lockout
+router.post('/:id/unlock', ...superadmin, (req, res) => {
+  db.prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?').run(req.params.id);
+  res.json({ message: 'Account entsperrt' });
+});
+
 // GET /
 router.get('/', ...superadmin, (req, res) => {
-  const rows = db.prepare('SELECT id, name, email, role, active, created_at FROM users ORDER BY name ASC').all();
+  const rows = db.prepare('SELECT id, name, email, role, active, created_at, failed_login_attempts, locked_until FROM users ORDER BY name ASC').all();
   const locMap = {};
   db.prepare('SELECT user_id, location_id FROM user_locations').all().forEach(r => {
     if (!locMap[r.user_id]) locMap[r.user_id] = [];

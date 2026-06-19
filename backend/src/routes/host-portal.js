@@ -156,6 +156,33 @@ function authenticateHost(req, res, next) {
   }
 }
 
+const MAX_ATTEMPTS = 5;
+const LOCK_MINUTES = 15;
+
+function recordFailedHostLogin(id) {
+  db.prepare(`
+    UPDATE hosts
+    SET failed_login_attempts = failed_login_attempts + 1,
+        locked_until = CASE
+          WHEN failed_login_attempts + 1 >= ${MAX_ATTEMPTS} THEN datetime('now', '+${LOCK_MINUTES} minutes')
+          ELSE locked_until
+        END
+    WHERE id = ?
+  `).run(id);
+}
+
+function recordSuccessfulHostLogin(id) {
+  db.prepare('UPDATE hosts SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?').run(id);
+}
+
+function checkLocked(row) {
+  if (row.locked_until && new Date(row.locked_until + 'Z') > new Date()) {
+    const remaining = Math.ceil((new Date(row.locked_until + 'Z') - new Date()) / 60000);
+    return `Account gesperrt. Bitte in ${remaining} Minute${remaining !== 1 ? 'n' : ''} erneut versuchen.`;
+  }
+  return null;
+}
+
 // POST /login
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
@@ -168,10 +195,25 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Ungültige Anmeldedaten oder kein Portal-Zugang eingerichtet' });
   }
 
+  const lockMsg = checkLocked(host);
+  if (lockMsg) {
+    try { log('LOGIN_BLOCKED', host.email, `Host-Portal gesperrt bis ${host.locked_until}`); } catch {}
+    return res.status(429).json({ error: lockMsg });
+  }
+
   const valid = bcrypt.compareSync(password, host.password_hash);
   if (!valid) {
-    return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+    recordFailedHostLogin(host.id);
+    const updated = db.prepare('SELECT failed_login_attempts FROM hosts WHERE id = ?').get(host.id);
+    const remaining = MAX_ATTEMPTS - updated.failed_login_attempts;
+    try { log('LOGIN_FAILED', host.email, `Host-Portal falsches Passwort (Versuch ${updated.failed_login_attempts}/${MAX_ATTEMPTS})`); } catch {}
+    if (remaining <= 0) {
+      return res.status(429).json({ error: `Account gesperrt. Bitte in ${LOCK_MINUTES} Minuten erneut versuchen.` });
+    }
+    return res.status(401).json({ error: `Ungültige Anmeldedaten (noch ${remaining} Versuch${remaining !== 1 ? 'e' : ''})` });
   }
+
+  recordSuccessfulHostLogin(host.id);
 
   const token = jwt.sign(
     { type: 'host', hostId: host.id },
@@ -181,8 +223,8 @@ router.post('/login', (req, res) => {
 
   try { log('LOGIN', host.email, `Host-Portal-Login: ${host.name}`); } catch {}
 
-  const { password_hash, ...hostWithoutHash } = host;
-  res.json({ token, host: hostWithoutHash });
+  const { password_hash, failed_login_attempts, locked_until, ...hostClean } = host;
+  res.json({ token, host: hostClean });
 });
 
 // GET /me
