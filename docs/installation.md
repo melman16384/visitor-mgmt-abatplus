@@ -23,15 +23,15 @@
 > **Netzwerk-Hinweis (Minimal-Prinzip):** Während der Installation werden `registry.npmjs.org:443`, `deb.nodesource.com:443` und `github.com:443` benötigt. Im laufenden Betrieb gibt es keine externen Abhängigkeiten — nur euer SMTP-Server, ggf. euer AD/LDAP-Server und der Etikettendrucker im LAN. Details: [Netzwerk & Firewall-Freigaben](dokumentation.md#25-netzwerk--firewall-freigaben)
 
 ```bash
-# Node.js 18+ installieren
-curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+# Node.js 20+ installieren (getestet auf 24)
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install -y nodejs
 
 # Nginx installieren
 apt install -y nginx
 
 # Versionen prüfen
-node -v    # v18.x oder höher
+node -v    # v20.x oder höher (empfohlen: v24)
 npm -v
 nginx -v
 ```

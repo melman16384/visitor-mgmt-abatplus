@@ -728,7 +728,7 @@ Ablauf: Besucher einchecken → Dokument hochladen (optional) → Unterschrift l
 
 ---
 
-## 11. Zugangsdaten & Benutzerrollen
+## 12. Zugangsdaten & Benutzerrollen
 
 > Zugangsdaten werden separat verwaltet und nicht in der Dokumentation hinterlegt.
 
@@ -1025,9 +1025,6 @@ pm2 list                       # Status aller Prozesse
 > Prozess nicht, antwortet Nginx auf `/api`-Calls nicht und das Frontend zeigt generisch
 > „Anmeldung fehlgeschlagen" (kein Hinweis auf falsche Zugangsdaten — das Backend ist schlicht down).
 
-> **Hinweis:** Frühere Versionen dieser Doku beschrieben einen systemd-Service. Das Produktivsystem
-> nutzt stattdessen pm2 (gemeinsam mit weiteren Projekten auf demselben Server).
-
 ### Nginx
 
 - HTTP (80) → HTTPS-Redirect
@@ -1235,10 +1232,7 @@ Diese Verbindungen werden **nur während der Installation** benötigt und könne
 | Zweck | Host / Domain | Port | Protokoll | Konfigurierbar? |
 |---|---|---|---|---|
 | SMTP (ausgehende E-Mail) | euer SMTP-Server (z.B. `smtp.firma.de`) | 465 oder 587 | SMTP+SSL/STARTTLS | Ja, in `.env` / Einstellungen |
-| LDAP / Active Directory | euer interner AD-Server | 389 (LDAP) oder 636 (LDAPS) | TCP | Ja, in Einstellungen → LDAP |
 | Etikettendrucker (Brother QL-820NWB) | Drucker-IP im LAN | 9100 | RAW TCP | Ja, in Einstellungen → Drucker |
-
-> **LDAP:** Nur relevant wenn LDAP-Sync aktiviert ist (Einstellungen → LDAP). Der AD-Server ist typischerweise intern und benötigt keine Internet-Freigabe.
 
 ### Nicht vorhanden / kein Bedarf
 
@@ -1260,7 +1254,6 @@ github.com:443
 
 # Dauerhaft (Laufzeit) — nur intern/konfiguriert:
 <SMTP-Server>:465 oder 587     # E-Mail-Versand
-<AD-Server>:389 oder 636       # LDAP-Sync (optional)
 <Drucker-IP>:9100              # Etikettendrucker (optional, LAN)
 ```
 
