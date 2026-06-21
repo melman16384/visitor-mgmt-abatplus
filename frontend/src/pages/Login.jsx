@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -12,6 +12,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showDemoCredentials, setShowDemoCredentials] = useState(false);
 
   // 2FA state
   const [step, setStep] = useState('credentials'); // 'credentials' | '2fa'
@@ -20,6 +21,12 @@ export default function Login() {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api.get('/settings/privacy-policy').then(r => {
+      setShowDemoCredentials(r.data.show_demo_credentials !== false);
+    }).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -184,11 +191,13 @@ export default function Login() {
             </div>
 
             {/* Demo credentials */}
-            <div className="kiosk-fade-up kiosk-delay-5 bg-gray-50 rounded-xl p-4 text-xs text-gray-500 border border-gray-100">
-              <p className="font-semibold text-gray-600 mb-2">Demo-Zugangsdaten:</p>
-              <p>Admin: <span className="font-mono text-gray-700">admin@firma.de</span> / <span className="font-mono text-gray-700">Admin123!</span></p>
-              <p>Empfang: <span className="font-mono text-gray-700">empfang@firma.de</span> / <span className="font-mono text-gray-700">Empfang123!</span></p>
-            </div>
+            {showDemoCredentials && (
+              <div className="kiosk-fade-up kiosk-delay-5 bg-gray-50 rounded-xl p-4 text-xs text-gray-500 border border-gray-100">
+                <p className="font-semibold text-gray-600 mb-2">Demo-Zugangsdaten:</p>
+                <p>Admin: <span className="font-mono text-gray-700">admin@firma.de</span> / <span className="font-mono text-gray-700">Admin123!</span></p>
+                <p>Empfang: <span className="font-mono text-gray-700">empfang@firma.de</span> / <span className="font-mono text-gray-700">Empfang123!</span></p>
+              </div>
+            )}
           </form>
           )}
         </div>

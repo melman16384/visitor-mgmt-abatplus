@@ -880,9 +880,34 @@ function EmailTab() {
 
 function PasswordTab() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showDemo, setShowDemo] = useState(true);
+  const [savingDemo, setSavingDemo] = useState(false);
+
+  useEffect(() => {
+    if (user?.role !== 'superadmin') return;
+    client.get('/settings/system').then(r => {
+      setShowDemo(r.data.show_demo_credentials !== 'false');
+    }).catch(() => {});
+  }, [user]);
+
+  const handleDemoToggle = async () => {
+    const next = !showDemo;
+    setShowDemo(next);
+    setSavingDemo(true);
+    try {
+      await client.put('/settings/system', { show_demo_credentials: next ? 'true' : 'false' });
+      showToast(next ? 'Demo-Zugangsdaten eingeblendet' : 'Demo-Zugangsdaten ausgeblendet');
+    } catch {
+      setShowDemo(!next);
+      showToast(t('common.error'), 'error');
+    } finally {
+      setSavingDemo(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -908,27 +933,48 @@ function PasswordTab() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>
-      )}
-      {[
-        { key: 'currentPassword', label: t('settings.password.current') },
-        { key: 'newPassword', label: t('settings.password.new') },
-        { key: 'confirmPassword', label: t('settings.password.confirm') },
-      ].map(({ key, label }) => (
-        <div key={key}>
-          <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-          <input type="password" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} required />
+    <div className="space-y-8 max-w-md">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>
+        )}
+        {[
+          { key: 'currentPassword', label: t('settings.password.current') },
+          { key: 'newPassword', label: t('settings.password.new') },
+          { key: 'confirmPassword', label: t('settings.password.confirm') },
+        ].map(({ key, label }) => (
+          <div key={key}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <input type="password" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} required />
+          </div>
+        ))}
+        <button type="submit" disabled={loading}
+          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
+          <Key size={16} />
+          {loading ? t('settings.password.changing') : t('settings.password.submit')}
+        </button>
+      </form>
+
+      {user?.role === 'superadmin' && (
+        <div className="border-t border-gray-100 pt-6 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-700">Login-Seite</h3>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Demo-Zugangsdaten anzeigen</p>
+              <p className="text-xs text-gray-500 mt-0.5">Zeigt Demo-Credentials auf der Admin-Login-Seite an. Im Produktivbetrieb deaktivieren.</p>
+            </div>
+            <button
+              onClick={handleDemoToggle}
+              disabled={savingDemo}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${showDemo ? 'bg-primary-600' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${showDemo ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
         </div>
-      ))}
-      <button type="submit" disabled={loading}
-        className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors disabled:opacity-50 text-sm">
-        <Key size={16} />
-        {loading ? t('settings.password.changing') : t('settings.password.submit')}
-      </button>
-    </form>
+      )}
+    </div>
   );
 }
 
