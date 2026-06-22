@@ -136,7 +136,7 @@ export default function Evacuation() {
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             {t('evacuation.refresh')}
           </button>
-          <button onClick={() => window.print()}
+          <button onClick={() => window.open('/evacuation/print', '_blank')}
             className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-sm transition-colors">
             <Printer size={16} />
             {t('evacuation.printBtn')}

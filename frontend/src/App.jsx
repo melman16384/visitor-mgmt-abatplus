@@ -14,6 +14,7 @@ import Hosts from './pages/Hosts';
 import PreRegistration from './pages/PreRegistration';
 
 import Evacuation from './pages/Evacuation';
+import EvacuationPrint from './pages/EvacuationPrint';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import AuditLog from './pages/AuditLog';
@@ -39,6 +40,7 @@ function AppRoutes() {
       <Route path="/kiosk/checkout" element={<KioskLangProvider><KioskCheckout /></KioskLangProvider>} />
       <Route path="/kiosk/manual" element={<KioskLangProvider><KioskManual /></KioskLangProvider>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/evacuation/print" element={<ProtectedRoute><EvacuationPrint /></ProtectedRoute>} />
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/visitors" element={<Visitors />} />
