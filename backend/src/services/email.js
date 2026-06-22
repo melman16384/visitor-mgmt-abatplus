@@ -38,7 +38,6 @@ function createTransport() {
   });
 }
 
-module.exports.getSmtpConfig = getSmtpConfig;
 
 function emailShell(content, company) {
   return `<!DOCTYPE html>
@@ -360,4 +359,4 @@ async function sendVisitorCheckout(visitor, visit, locationName) {
   }
 }
 
-module.exports = { sendHostNotification, sendPreRegistrationQR, sendVisitorConfirmation, sendVisitorCheckout };
+module.exports = { sendHostNotification, sendPreRegistrationQR, sendVisitorConfirmation, sendVisitorCheckout, getSmtpConfig };
