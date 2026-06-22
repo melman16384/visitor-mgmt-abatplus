@@ -38,10 +38,14 @@ export default function KioskCheckin() {
   const { t } = useKioskLang();
 
   const [state, setState] = useState('scan');
+  const [tab, setTab] = useState('scan');
+  const [tabKey, setTabKey] = useState(0);
 
   useKioskIdle(60_000, () => navigate('/kiosk'));
   const [animKey, setAnimKey] = useState(0);
   const dirRef = useRef('forward');
+
+  const switchTab = (newTab) => { setTab(newTab); setTabKey(k => k + 1); };
 
   const [prereg, setPrereg] = useState(null);
   const [qrCode, setQrCode] = useState(null);
@@ -272,18 +276,37 @@ export default function KioskCheckin() {
     <div key={animKey} className={`${animClass} min-h-screen bg-white flex flex-col`}>
       <KioskHeader onBack={() => navigate('/kiosk')} title={t('checkin')} />
 
-      <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 gap-6 max-w-2xl mx-auto w-full">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-abat-dunkelgrau mb-2">{t('scanTitle')}</h2>
-          <p className="text-abat-grau">{t('scanHint')}</p>
+      <div className="flex-1 flex flex-col items-center justify-center px-8 py-8 gap-6 max-w-2xl mx-auto w-full">
+        {/* Tab switcher */}
+        <div className="flex bg-gray-100 rounded-xl p-1 w-full">
+          {[
+            { key: 'scan', label: t('scanQR') },
+            { key: 'abat', label: 'abat-ID' },
+          ].map(({ key, label }) => (
+            <button key={key} onClick={() => switchTab(key)}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                tab === key
+                  ? 'bg-white text-abat-dunkelgrau shadow-sm'
+                  : 'text-abat-grau hover:text-abat-dunkelgrau'
+              }`}>
+              {label}
+            </button>
+          ))}
         </div>
-        <QRScanner onScan={handleQRScan} className="w-full" />
-        <div className="flex items-center gap-4 w-full">
-          <div className="flex-1 h-px bg-abat-hellgrau" />
-          <span className="text-abat-grau text-sm font-medium">oder abat-ID eingeben</span>
-          <div className="flex-1 h-px bg-abat-hellgrau" />
+
+        {/* Tab content */}
+        <div key={tabKey} className="kiosk-fade-up w-full flex flex-col items-center gap-4">
+          {tab === 'scan' && (
+            <>
+              <p className="text-abat-grau text-center text-sm">{t('scanHint')}</p>
+              <QRScanner onScan={handleQRScan} className="w-full" />
+            </>
+          )}
+          {tab === 'abat' && (
+            <AbatIdInput onSubmit={handleAbatLookup} loading={abatLoading} error={abatError} />
+          )}
         </div>
-        <AbatIdInput onSubmit={handleAbatLookup} loading={abatLoading} error={abatError} />
+
         <div className="flex items-center gap-4 w-full">
           <div className="flex-1 h-px bg-abat-hellgrau" />
           <span className="text-abat-grau text-sm font-medium">oder</span>
