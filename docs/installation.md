@@ -1,6 +1,6 @@
 # Installationsanleitung — Besucherverwaltungssystem
 
-> Zielumgebung: Ubuntu/Debian Server · Node.js 18+ · Nginx
+> Zielumgebung: Ubuntu/Debian Server · Node.js 22+ · Nginx
 
 ---
 
@@ -20,18 +20,18 @@
 
 ## 1. Voraussetzungen
 
-> **Netzwerk-Hinweis (Minimal-Prinzip):** Während der Installation werden `registry.npmjs.org:443`, `deb.nodesource.com:443` und `github.com:443` benötigt. Im laufenden Betrieb gibt es keine externen Abhängigkeiten — nur euer SMTP-Server, ggf. euer AD/LDAP-Server und der Etikettendrucker im LAN. Details: [Netzwerk & Firewall-Freigaben](dokumentation.md#25-netzwerk--firewall-freigaben)
+> **Netzwerk-Hinweis (Minimal-Prinzip):** Während der Installation werden `registry.npmjs.org:443`, `deb.nodesource.com:443` und `github.com:443` benötigt. Im laufenden Betrieb gibt es keine externen Abhängigkeiten — nur euer SMTP-Server und der Etikettendrucker im LAN. Details: [Netzwerk & Firewall-Freigaben](dokumentation.md#25-netzwerk--firewall-freigaben)
 
 ```bash
-# Node.js 20+ installieren (getestet auf 24)
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+# Node.js 22 installieren
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt install -y nodejs
 
 # Nginx installieren
 apt install -y nginx
 
 # Versionen prüfen
-node -v    # v20.x oder höher (empfohlen: v24)
+node -v    # v22.x oder höher
 npm -v
 nginx -v
 ```
@@ -71,15 +71,24 @@ nano .env
 
 ```env
 PORT=3001
-JWT_SECRET=<langer-zufälliger-string>   # z.B. openssl rand -hex 32
+JWT_SECRET=<langer-zufälliger-string>   # z.B. openssl rand -hex 64
 DB_PATH=/opt/visitor-mgmt/backend/data/visitors.db   # absoluten Pfad verwenden (siehe Hinweis)
 
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
+SMTP_SECURITY=starttls                  # ssl oder starttls
 SMTP_USER=deine@email.de
 SMTP_PASS=dein-app-passwort
 FROM_EMAIL=noreply@firma.de
-COMPANY_NAME=Firmenname
+COMPANY_NAME=Firmenname GmbH
+
+# Öffentliche URL der App (für E-Mail-Links und CORS)
+FRONTEND_URL=https://besucher.meinefirma.de
+APP_URL=https://besucher.meinefirma.de
+
+# Optionaler initialer Admin-Account (Standard: admin@example.com / ChangeMe123!)
+# ADMIN_EMAIL=admin@meinefirma.de
+# ADMIN_PASSWORD=SicheresPasswort123!
 ```
 
 > **JWT_SECRET** niemals leer lassen und nicht in Git einchecken.
@@ -257,14 +266,15 @@ curl -X POST http://localhost:3001/api/auth/login \
   -d '{"email":"admin@abat.de","password":"<passwort>"}'
 ```
 
-Standard-Login nach erstem Start (aus `backend/src/db/database.js`):
+Standard-Login nach erstem Start:
 
 | E-Mail | Passwort | Rolle |
 |---|---|---|
-| admin@firma.de | Admin123! | superadmin |
-| empfang@firma.de | Empfang123! | receptionist |
+| `admin@example.com` | `ChangeMe123!` | superadmin |
 
-> Passwörter sofort nach dem ersten Login unter **Einstellungen → Passwort ändern** ändern.
+Eigene Zugangsdaten beim ersten Start setzen: `ADMIN_EMAIL` und `ADMIN_PASSWORD` in der `.env` eintragen **bevor** das Backend das erste Mal gestartet wird.
+
+> Passwort sofort nach dem ersten Login unter **Einstellungen → Passwort ändern** ändern.
 
 ---
 
@@ -286,7 +296,7 @@ cd /opt/visitor-mgmt/backend
 
 # Passwort und E-Mail anpassen:
 NEUES_PW="DeinNeuesPasswort123!"
-EMAIL="superadmin@abat.de"
+EMAIL="admin@example.com"   # E-Mail des Accounts anpassen
 
 HASH=$(node -e "const b=require('./node_modules/bcryptjs'); b.hash('$NEUES_PW',12).then(h=>process.stdout.write(h))")
 sqlite3 /opt/visitor-mgmt/backend/data/visitors.db "UPDATE users SET password_hash='$HASH' WHERE email='$EMAIL';"
