@@ -13,7 +13,6 @@ const STATE_RANK = { scan: 0, confirm: 1, privacy: 2, success: 3, error: 3 };
 function AbatIdInput({ onSubmit, loading, error }) {
   const [digits, setDigits] = useState('');
   const inputRef = useRef(null);
-  useEffect(() => { inputRef.current?.focus(); }, []);
   const handleChange = (e) => {
     const val = e.target.value.replace(/\D/g, '').slice(0, 8);
     setDigits(val);
