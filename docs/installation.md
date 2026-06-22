@@ -74,9 +74,9 @@ PORT=3001
 JWT_SECRET=<langer-zufälliger-string>   # z.B. openssl rand -hex 64
 DB_PATH=/opt/visitor-mgmt/backend/data/visitors.db   # absoluten Pfad verwenden (siehe Hinweis)
 
-SMTP_HOST=smtp.gmail.com
+SMTP_HOST=smtp.gmail.com        # Fallback — kann auch im Admin-Panel gesetzt werden
 SMTP_PORT=587
-SMTP_SECURITY=starttls                  # ssl oder starttls
+SMTP_SECURITY=starttls          # ssl, starttls oder none
 SMTP_USER=deine@email.de
 SMTP_PASS=dein-app-passwort
 FROM_EMAIL=noreply@firma.de
@@ -155,6 +155,13 @@ server {
     root /opt/visitor-mgmt/frontend/dist;
     index index.html;
 
+    # index.html nie cachen (Browser lädt sonst altes JS nach Updates)
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        expires 0;
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -174,7 +181,7 @@ server {
         proxy_pass http://127.0.0.1:3001;
     }
 
-    # Caching für statische Assets
+    # Caching für statische Assets (Vite-gehashte Dateinamen → sicher für 1y)
     location ~* \.(js|css|png|jpg|svg|ttf|woff2)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -237,14 +244,18 @@ pm2 startup               # einmalig: pm2 nach Reboot automatisch starten (Anwei
 Alltagsbefehle:
 
 ```bash
-pm2 restart visitor-mgmt  # nach jedem git pull oder jeder .env-Änderung
+pm2 restart visitor-mgmt  # nach jedem git pull
 pm2 logs visitor-mgmt     # Live-Logs
 pm2 list                  # Status aller Prozesse
 ```
 
-> **Wichtig:** Nach `git pull` und `.env`-Änderungen immer `pm2 restart visitor-mgmt`. Läuft der
-> Prozess nicht, antwortet Nginx auf `/api` nicht und das Frontend meldet generisch
-> „Anmeldung fehlgeschlagen" — das ist dann **kein** Passwortproblem, sondern ein nicht laufendes Backend.
+> **Wichtig:** Nach `git pull` immer `pm2 restart visitor-mgmt`. Läuft der Prozess nicht, antwortet
+> Nginx auf `/api` nicht und das Frontend meldet generisch „Anmeldung fehlgeschlagen" — das ist dann
+> **kein** Passwortproblem, sondern ein nicht laufendes Backend.
+>
+> **SMTP-Einstellungen** müssen **nicht** per Neustart übernommen werden — sie lassen sich direkt im
+> Admin-Panel unter **Einstellungen → E-Mail** (nur Superadmin) ändern und wirken sofort. Die `.env`
+> dient nur als initialer Fallback.
 
 ---
 
