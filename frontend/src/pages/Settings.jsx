@@ -888,7 +888,7 @@ function PasswordTab() {
   const [savingDemo, setSavingDemo] = useState(false);
 
   useEffect(() => {
-    if (user?.role !== 'superadmin') return;
+    if (!['superadmin', 'admin'].includes(user?.role)) return;
     client.get('/settings/system').then(r => {
       setShowDemo(r.data.show_demo_credentials !== 'false');
     }).catch(() => {});
@@ -956,7 +956,7 @@ function PasswordTab() {
         </button>
       </form>
 
-      {user?.role === 'superadmin' && (
+      {['superadmin', 'admin'].includes(user?.role) && (
         <div className="border-t border-gray-100 pt-6 space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">Login-Seite</h3>
           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex items-center justify-between gap-4">
@@ -965,6 +965,7 @@ function PasswordTab() {
               <p className="text-xs text-gray-500 mt-0.5">Zeigt Demo-Credentials auf der Admin-Login-Seite an. Im Produktivbetrieb deaktivieren.</p>
             </div>
             <button
+              type="button"
               onClick={handleDemoToggle}
               disabled={savingDemo}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${showDemo ? 'bg-primary-600' : 'bg-gray-200'}`}

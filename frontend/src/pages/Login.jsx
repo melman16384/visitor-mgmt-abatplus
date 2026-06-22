@@ -12,7 +12,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showDemoCredentials, setShowDemoCredentials] = useState(false);
+  const [showDemoCredentials, setShowDemoCredentials] = useState(true);
 
   // 2FA state
   const [step, setStep] = useState('credentials'); // 'credentials' | '2fa'
