@@ -22,11 +22,12 @@
 9. [Check-in Ablauf](#9-check-in-ablauf)
 10. [Vorregistrierungen](#10-vorregistrierungen)
 11. [Auto-Checkout](#11-auto-checkout)
-12. [Einstellungen](#12-einstellungen)
-13. [Infrastruktur & Deployment](#13-infrastruktur--deployment)
-14. [Umgebungsvariablen (.env)](#14-umgebungsvariablen-env)
-15. [Wichtige Befehle](#15-wichtige-befehle)
-16. [Fehlerbehebung](#16-fehlerbehebung)
+12. [Datenspeicherung (Data Retention)](#12-datenspeicherung-data-retention)
+13. [Einstellungen](#13-einstellungen)
+14. [Infrastruktur & Deployment](#14-infrastruktur--deployment)
+15. [Umgebungsvariablen (.env)](#15-umgebungsvariablen-env)
+16. [Wichtige Befehle](#16-wichtige-befehle)
+17. [Fehlerbehebung](#17-fehlerbehebung)
 
 ---
 
@@ -152,6 +153,7 @@ Browser / Handy (Mitarbeiter)
 │   │   │   └── dashboard.js         # Statistiken + letzte Aktivitäten
 │   │   ├── services/
 │   │   │   ├── auto-checkout.js     # Täglicher Auto-Checkout per setTimeout
+│   │   │   ├── data-retention.js    # Tägliche Datenlöschung nach Aufbewahrungsfrist
 │   │   │   └── audit-log.js         # Dateibasiertes Audit-Log (optional)
 │   │   └── index.js                 # App-Einstieg, Middleware, Route-Mounting
 │   ├── data/
@@ -258,8 +260,9 @@ Browser / Handy (Mitarbeiter)
 #### `system_settings` — Schlüssel-Wert-Konfiguration
 | Key | Default | Beschreibung |
 |---|---|---|
-| `auto_checkout_enabled` | `1` | Auto-Checkout aktiv (1) oder deaktiviert (0) |
+| `auto_checkout_enabled` | `true` | Auto-Checkout aktiv (`true`) oder deaktiviert (`false`) |
 | `auto_checkout_time` | `20:00` | Uhrzeit im Format HH:MM |
+| `data_retention_days` | `365` | Aufbewahrungsdauer in Tagen; `0` = deaktiviert (unbegrenzt) |
 
 ---
 
@@ -274,6 +277,8 @@ Authorization: Bearer <token>
 ```
 
 Der Token wird nach Login zurückgegeben und ist 8 Stunden gültig.
+
+> **Settings-Endpunkte:** Das Frontend nutzt `/settings` (ohne Suffix). Der Backend-Router akzeptiert sowohl `/settings` als auch `/settings/system` — beide Pfade sind äquivalent.
 
 ---
 
@@ -493,10 +498,10 @@ Aktualisiert Einstellungen. Nur erlaubte Keys werden akzeptiert. Nur `admin`.
 
 **Body:**
 ```json
-{ "auto_checkout_enabled": "0", "auto_checkout_time": "19:30" }
+{ "auto_checkout_enabled": "0", "auto_checkout_time": "19:30", "data_retention_days": "180" }
 ```
 
-> Nach Änderung der Zeit wird der interne Scheduler beim nächsten `pm2 restart visitor-mgmt` neu initialisiert. Alternativ genügt auch ein Neustart.
+> Nach Änderung der Checkout-Zeit muss das Backend neugestartet werden: `pm2 restart visitor-mgmt`. Die Aufbewahrungsdauer wird beim nächsten täglichen Lauf automatisch übernommen.
 
 ---
 
@@ -519,6 +524,8 @@ Benutzer bearbeiten. `password` kann leer gelassen werden — dann bleibt das al
 #### `DELETE /users/:id`
 Benutzer löschen. Kann nicht den eigenen Account löschen.
 
+Hat der Benutzer bereits Besuche erfasst (`checked_in_by`-Referenz), wird er nur deaktiviert (`active = 0`) — historische Daten bleiben nachvollziehbar. Hat er keine Besuche erfasst, wird er dauerhaft gelöscht.
+
 ---
 
 ## 7. Microsoft SSO
@@ -533,21 +540,35 @@ Das System nutzt den **OAuth2 Authorization Code Flow** über Microsoft Entra ID
 3. Backend generiert Microsoft-Auth-URL (via MSAL) und leitet weiter
 4. Mitarbeiter meldet sich bei Microsoft an (ggf. bereits eingeloggt = automatisch)
 5. Microsoft → GET /api/auth/microsoft/callback?code=…
-6. Backend tauscht Code gegen Benutzerinfo (Name, E-Mail)
-7. Falls User noch nicht existiert: User + Host werden automatisch angelegt
-8. Backend stellt JWT aus und leitet zu /auth-callback?token=… weiter
-9. Frontend speichert Token, leitet auf /dashboard weiter
+6. Backend tauscht Code gegen Access-Token (MSAL)
+7. Backend ruft Microsoft Graph API ab: GET /v1.0/me → echte E-Mail + Displayname
+8. Falls User noch nicht existiert: User + Host werden automatisch angelegt
+9. Backend stellt JWT aus und leitet zu /auth-callback?token=… weiter
+10. Frontend speichert Token, leitet auf /dashboard weiter
 ```
+
+### Datenquellen aus Microsoft Graph
+
+Nach dem Token-Exchange wird `https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName` abgerufen:
+
+| Feld | Graph-Attribut | Fallback |
+|---|---|---|
+| E-Mail (Login) | `mail` | `userPrincipalName` → `account.username` |
+| Anzeigename | `displayName` | `idTokenClaims.name` → E-Mail-Prefix |
+
+> **Wichtig:** `mail` ist das tatsächliche E-Mail-Attribut aus dem Active Directory. `userPrincipalName` (UPN) kann davon abweichen (z.B. `vorname@tenant.onmicrosoft.com` statt `vorname@firma.de`). Deshalb wird `mail` bevorzugt.
 
 ### Automatische Account-Erstellung
 
 Beim **ersten Login** eines Mitarbeiters:
-- `users`-Eintrag wird angelegt (Rolle: `user`, kein Passwort)
-- `hosts`-Eintrag wird angelegt (Name + E-Mail aus Microsoft-Profil)
+- `users`-Eintrag wird angelegt (Rolle: `user`, kein Passwort, E-Mail aus `mail`-Attribut)
+- `hosts`-Eintrag wird angelegt (Displayname + E-Mail aus Microsoft Graph)
 
 Bei **weiteren Logins** desselben Accounts:
-- Bestehender User wird gefunden (E-Mail-Match, case-insensitive)
+- Bestehender User wird gefunden (E-Mail-Match auf `mail`-Attribut, case-insensitive)
 - Kein neuer Eintrag — sofortiger Login
+
+> Wurden Accounts noch mit dem UPN angelegt (vor der Graph-API-Umstellung), müssen E-Mail-Adressen in Einstellungen → Benutzer manuell korrigiert werden.
 
 ### Azure App Registration einrichten
 
@@ -682,36 +703,69 @@ Der Auto-Checkout läuft täglich zur konfigurierten Uhrzeit und checkt alle noc
 - Toggle: aktiviert / deaktiviert
 - Uhrzeit: beliebige HH:MM-Zeit
 
-> Nach Änderung der Checkout-Zeit im UI muss das Backend neugestartet werden, damit der Scheduler die neue Zeit übernimmt: `pm2 restart visitor-mgmt`
+> Nach Änderung der Checkout-Zeit im UI muss das Backend neugestartet werden: `pm2 restart visitor-mgmt`
 
 ---
 
-## 12. Einstellungen
+## 12. Datenspeicherung (Data Retention)
 
-Erreichbar unter `/settings`. Drei Tabs abhängig von der Rolle:
+**Service:** `backend/src/services/data-retention.js`
+
+Löscht täglich alte Besuchsdaten automatisch. Läuft einmal beim Backend-Start (Nachholung falls Server ausgefallen war) und danach alle 24 Stunden.
+
+**Was wird gelöscht:**
+- `visits` mit `status = 'completed'` und `checked_in_at` älter als N Tage
+- `visitors` ohne verbleibende Visits und `created_at` älter als N Tage
+- `preregistrations` mit `status != 'pending'` und `created_at` älter als N Tage
+
+**Was bleibt immer erhalten:**
+- Aktive Besuche (`status = 'active'`)
+- Ausstehende Vorregistrierungen (`status = 'pending'`)
+
+**Konfiguration** über Einstellungen → Datenspeicherung (nur admin):
+| Option | Wert |
+|---|---|
+| 30 / 60 / 90 / 180 Tage | Voreinstellungen per Klick |
+| 1 Jahr | Standard (365 Tage) |
+| Benutzerdefiniert | Beliebige Tageszahl |
+| Deaktiviert | `0` — Daten werden nie automatisch gelöscht |
+
+Änderungen werden beim nächsten täglichen Lauf automatisch übernommen — kein Backend-Neustart nötig.
+
+---
+
+## 13. Einstellungen
+
+Erreichbar unter `/settings`. Vier Tabs für Admins, ein Tab für normale Benutzer:
 
 ### Auto-Checkout (nur admin)
 - Toggle: Auto-Checkout ein- oder ausschalten
 - Uhrzeit-Feld: Zeit im Format HH:MM
 - Speichern → schreibt in `system_settings` Tabelle
+- Nach Zeitänderung: `pm2 restart visitor-mgmt` nötig
+
+### Datenspeicherung (nur admin)
+- Preset-Buttons: 30 / 60 / 90 / 180 Tage / 1 Jahr / Benutzerdefiniert / Deaktiviert
+- Benutzerdefiniert: beliebige Tageszahl als Eingabe
+- Speichern → schreibt `data_retention_days` in `system_settings`
 
 ### Passwort ändern (alle)
 - Aktuelles Passwort + neues Passwort + Bestätigung
 - Mindestlänge: 8 Zeichen
-- Für reine SSO-Nutzer (kein Passwort gesetzt) nicht sinnvoll nutzbar
+- Für reine SSO-Nutzer (kein Passwort gesetzt) nicht nutzbar
 
 ### Benutzer (nur admin)
-- Tabelle aller Benutzer mit Name, E-Mail, Rolle
+- Tabelle aller aktiven Benutzer mit Name, E-Mail, Rolle
 - Erstellen: Name, E-Mail, Passwort, Rolle
 - Bearbeiten: alle Felder; Passwort leer lassen = unverändert
-- Löschen: dauerhaft; eigener Account kann nicht gelöscht werden
+- Löschen: hard-delete wenn keine Besuche erfasst; sonst Deaktivierung (Historien-Schutz)
 - Rollenwechsel: `user` ↔ `admin`
 
 **Mitarbeiterverwaltung** (Ansprechpartner für Besucher) ist eine separate Seite (`/hosts`), erreichbar über die Sidebar.
 
 ---
 
-## 13. Infrastruktur & Deployment
+## 14. Infrastruktur & Deployment
 
 ### Nginx
 
@@ -759,7 +813,7 @@ pm2 stop visitor-mgmt             # Anhalten
 
 ---
 
-## 14. Umgebungsvariablen (.env)
+## 15. Umgebungsvariablen (.env)
 
 **Datei:** `/opt/visitor-mgmt-abatplus/backend/.env`  
 **Nicht in Git** — von `.gitignore` ausgeschlossen. Vorlage unter `backend/.env.example`.
@@ -784,7 +838,7 @@ pm2 stop visitor-mgmt             # Anhalten
 
 ---
 
-## 15. Wichtige Befehle
+## 16. Wichtige Befehle
 
 ```bash
 # ── Deployment ────────────────────────────────────────────────
@@ -844,7 +898,7 @@ tail -f /root/.pm2/logs/visitor-mgmt-error.log
 
 ---
 
-## 16. Fehlerbehebung
+## 17. Fehlerbehebung
 
 ### „Anmeldung fehlgeschlagen" — kein Netzwerkfehler sichtbar
 Backend läuft nicht.
