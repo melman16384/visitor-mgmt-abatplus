@@ -35,6 +35,8 @@
 
 Schlanke, mitarbeitergesteuerte Besucherverwaltung, entwickelt ausschließlich für den internen Einsatz bei abat+. Mitarbeiter melden sich mit ihrem Microsoft-Firmenkonto an und checken Besucher direkt vom eigenen Desktop oder Handy ein — ohne Empfangskiosk, ohne Selbstbedienung durch den Besucher.
 
+> **Begriffe:** *Mitarbeiter* = Personen die sich im System anmelden. *Gastgeber* = Ansprechpartner für einen Besucher (wählbar im Check-in-Formular, Seite `/hosts`).
+
 ### Designprinzipien
 
 - **Kein Kiosk, keine Selbstbedienung** — Besucher werden immer durch einen Mitarbeiter erfasst
@@ -50,7 +52,7 @@ Schlanke, mitarbeitergesteuerte Besucherverwaltung, entwickelt ausschließlich f
 | Check-out | Manuell per Klick oder automatisch zur konfigurierten Uhrzeit |
 | „Erfasst durch" | Speichert Name + Zeitstempel des einchecke­nden Mitarbeiters |
 | Vorregistrierungen | Besucher vorab eintragen; bei Ankunft per Klick einchecken |
-| Microsoft SSO | Login mit Firmenkonto; User + Mitarbeiter-Eintrag automatisch angelegt |
+| Microsoft SSO | Login mit Firmenkonto; User + Gastgeber-Eintrag automatisch angelegt |
 | Datenschutz-Checkbox | Einfache Bestätigung statt Unterschriftspad |
 | Mobil-optimiert | Vollständig responsiv — Handy + Desktop gleichwertig |
 | Auto-Checkout | Täglich zur konfigurierbaren Uhrzeit (Standard: 20:00), abschaltbar |
@@ -146,7 +148,7 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── auth-microsoft.js    # GET /microsoft, GET /microsoft/callback (MSAL)
 │   │   │   ├── visitors.js          # Besucher-CRUD, Check-in (POST /)
 │   │   │   ├── visits.js            # Check-out (POST /:id/checkout)
-│   │   │   ├── hosts.js             # Mitarbeiter-CRUD
+│   │   │   ├── hosts.js             # Gastgeber-CRUD
 │   │   │   ├── preregistrations.js  # Vorregistrierungen + POST /:id/checkin
 │   │   │   ├── users.js             # Benutzerverwaltung (admin only)
 │   │   │   ├── settings.js          # Auto-Checkout-Einstellungen
@@ -168,7 +170,7 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── AuthCallback.jsx     # Verarbeitet OAuth-Redirect + speichert JWT
 │   │   │   ├── Dashboard.jsx        # Übersicht, Statistiken, Check-in-Button
 │   │   │   ├── Visitors.jsx         # Besucherliste mit Tabs + mobiler Kartenansicht
-│   │   │   ├── Hosts.jsx            # Mitarbeiterliste
+│   │   │   ├── Hosts.jsx            # Gastgeberliste
 │   │   │   ├── PreRegistration.jsx  # Vorregistrierungen verwalten + einchecken
 │   │   │   └── Settings.jsx         # Auto-Checkout, Passwort, Benutzerverwaltung
 │   │   ├── components/
@@ -231,7 +233,7 @@ Browser / Handy (Mitarbeiter)
 | checked_in_by | INTEGER FK | → users.id — wer hat eingecheckt |
 | notes | TEXT | Freitext-Notiz |
 
-#### `hosts` — Mitarbeiter (Ansprechpartner für Besucher)
+#### `hosts` — Gastgeber (Ansprechpartner für Besucher)
 | Spalte | Typ | Beschreibung |
 |---|---|---|
 | id | INTEGER PK | |
@@ -240,7 +242,7 @@ Browser / Handy (Mitarbeiter)
 | active | INTEGER | 1 = aktiv, erscheint im Dropdown |
 | created_at | TEXT | |
 
-> Hosts werden bei Microsoft-Login automatisch angelegt. Sie können auch manuell über die Mitarbeiter-Seite gepflegt werden.
+> Gastgeber werden bei Microsoft-Login automatisch angelegt. Sie können auch manuell über die Gastgeber-Seite (`/hosts`) gepflegt werden.
 
 #### `preregistrations` — Vorangemeldete Besucher
 | Spalte | Typ | Beschreibung |
@@ -250,7 +252,7 @@ Browser / Handy (Mitarbeiter)
 | visitor_last_name | TEXT NOT NULL | |
 | visitor_company | TEXT | |
 | host_id | INTEGER FK | → hosts.id |
-| expected_date | TEXT | YYYY-MM-DD |
+| expected_date | TEXT | YYYY-MM-DD (optional) |
 | expected_time | TEXT | HH:MM (optional) |
 | notes | TEXT | |
 | status | TEXT | `pending` → `checked_in` oder `cancelled` |
@@ -421,10 +423,10 @@ Checkt einen aktiven Visit aus. Setzt `checked_out_at = jetzt` und `status = com
 
 ---
 
-### Hosts (Mitarbeiter)
+### Gastgeber
 
 #### `GET /hosts`
-Gibt alle aktiven Mitarbeiter zurück. Öffentlich zugänglich (kein Token nötig) — wird für das Dropdown im Check-in-Formular genutzt.
+Gibt alle aktiven Gastgeber zurück. Öffentlich zugänglich (kein Token nötig) — wird für das Dropdown im Check-in-Formular genutzt.
 
 **Query:** `?search=Max` — filtert nach Name oder E-Mail.
 
@@ -437,7 +439,7 @@ Gibt alle aktiven Mitarbeiter zurück. Öffentlich zugänglich (kein Token nöti
 ```
 
 #### `POST /hosts` / `PUT /hosts/:id`
-Erstellt oder bearbeitet einen Mitarbeiter. Nur `admin`.
+Erstellt oder bearbeitet einen Gastgeber. Nur `admin`.
 
 **Body:**
 ```json
@@ -445,7 +447,7 @@ Erstellt oder bearbeitet einen Mitarbeiter. Nur `admin`.
 ```
 
 #### `DELETE /hosts/:id`
-Soft-Delete: setzt `active = 0`. Der Mitarbeiter verschwindet aus dem Dropdown, bleibt aber in historischen Besuchen referenzierbar.
+Soft-Delete: setzt `active = 0`. Der Gastgeber verschwindet aus dem Dropdown, bleibt aber in historischen Besuchen referenzierbar.
 
 ---
 
@@ -456,6 +458,8 @@ Gibt alle Vorregistrierungen zurück, neueste zuerst.
 
 #### `POST /preregistrations`
 Erstellt eine neue Vorregistrierung.
+
+**Pflichtfelder:** `visitor_first_name`, `visitor_last_name`
 
 **Body:**
 ```json
@@ -469,6 +473,8 @@ Erstellt eine neue Vorregistrierung.
   "notes": "Bewerbungsgespräch"
 }
 ```
+
+> `expected_date` und `expected_time` sind optional. Die tatsächliche Check-in-Zeit wird beim Einchecken automatisch erfasst.
 
 #### `POST /preregistrations/:id/checkin`
 Kernfunktion: Checkt einen vorangemeldeten Besucher ein. Erstellt einen echten `visit`-Eintrag, setzt `checked_in_by = req.user.id` und ändert den Status auf `checked_in`.
@@ -562,7 +568,7 @@ Nach dem Token-Exchange wird `https://graph.microsoft.com/v1.0/me?$select=displa
 
 Beim **ersten Login** eines Mitarbeiters:
 - `users`-Eintrag wird angelegt (Rolle: `user`, kein Passwort, E-Mail aus `mail`-Attribut)
-- `hosts`-Eintrag wird angelegt (Displayname + E-Mail aus Microsoft Graph)
+- `hosts`-Eintrag (Gastgeber) wird angelegt (Displayname + E-Mail aus Microsoft Graph)
 
 Bei **weiteren Logins** desselben Accounts:
 - Bestehender User wird gefunden (E-Mail-Match auf `mail`-Attribut, case-insensitive)
@@ -612,7 +618,7 @@ pm2 restart visitor-mgmt --update-env
 | `/dashboard` | Statistiken, letzte Aktivitäten, Check-in-Button | alle |
 | `/visitors` | Besucherliste mit Tabs und mobiler Kartenansicht | alle |
 | `/preregistrations` | Vorregistrierungen anlegen + einchecken | alle |
-| `/hosts` | Mitarbeiterliste (Bearbeiten/Löschen nur admin) | alle |
+| `/hosts` | Gastgeberliste (Bearbeiten/Löschen nur admin) | alle |
 | `/settings` | Einstellungen (Tabs je nach Rolle) | alle |
 
 ### Navigation
@@ -622,7 +628,7 @@ pm2 restart visitor-mgmt --update-env
 
 ### Login-Seite
 
-Primär: großer **„Mit Microsoft-Konto anmelden"**-Button. Darunter ein ausklappbarer Bereich für E-Mail/Passwort-Login (Fallback für den Admin-Account).
+Header zeigt **abat+** als Wortmarke (kein Bildlogo). Primär: großer **„Mit Microsoft-Konto anmelden"**-Button. Darunter ein ausklappbarer Bereich für E-Mail/Passwort-Login (Fallback für den Admin-Account).
 
 ### Dashboard
 
@@ -632,14 +638,14 @@ Vier Statistik-Karten:
 - Heute ausgecheckt
 - Vorregistrierungen offen
 
-Darunter eine Liste der letzten 10 Aktivitäten mit Name, Unternehmen, Mitarbeiter und „Erfasst durch".
+Darunter eine Liste der letzten 10 Aktivitäten mit Name, Unternehmen, Gastgeber und „Erfasst durch" — **nur für Admins sichtbar**.
 
 ### Besucherliste (`/visitors`)
 
 Drei Tabs: **Anwesend** · **Ausgecheckt** · **Alle**  
 Suchfeld filtert in Echtzeit nach Name und Unternehmen.
 
-Desktop: Tabelle mit Spalten Name, Mitarbeiter, Check-in-Zeit, Erfasst durch, Status, Aktionen.  
+Desktop: Tabelle mit Spalten Name, Gastgeber, Check-in-Zeit, Erfasst durch, Status, Aktionen.  
 Mobil: Karten-Layout mit denselben Informationen und Touch-freundlichen Buttons.
 
 „Auschecken"-Button erscheint nur bei aktiven Besuchen.
@@ -655,7 +661,7 @@ Mobil: Karten-Layout mit denselben Informationen und Touch-freundlichen Buttons.
 3. Modal öffnet sich mit Formular:
    - Vorname* + Nachname*
    - Unternehmen (optional)
-   - Mitarbeiter/Ansprechpartner* (Dropdown aller aktiven Hosts)
+   - Gastgeber/Ansprechpartner* (Dropdown aller aktiven Gastgeber)
    - Notizen (optional)
    - Datenschutz-Checkbox*
 4. Absenden → Backend legt `visitor` + `visit` an, setzt `checked_in_by = ID des eingeloggten Users`
@@ -675,13 +681,15 @@ Für Besucher, die im Voraus angekündigt sind (z.B. Termine, Bewerbungsgespräc
 **Ablauf:**
 
 1. Mitarbeiter öffnet **Vorregistrierungen → „Vorregistrierung"**
-2. Formular ausfüllen: Name, Unternehmen (optional), Mitarbeiter, Datum, Uhrzeit (optional), Notizen
+2. Formular ausfüllen: Name, Unternehmen (optional), Gastgeber, Datum (optional), Uhrzeit (optional), Notizen
 3. Eintrag erscheint im Tab **„Ausstehend"**
 4. Wenn Besucher ankommt: irgendein eingeloggter Mitarbeiter klickt **„Einchecken"** bei dem Eintrag
 5. Backend erstellt `visit`, setzt `checked_in_by = aktueller User`, Status → `checked_in`
 6. Eintrag wandert in Tab **„Eingecheckt"**
 
 **Wichtig:** Der Mitarbeiter der einscheckt muss nicht identisch mit dem sein, der vorregistriert hat.
+
+> Datum und Uhrzeit sind optional — die tatsächliche Check-in-Zeit wird beim Einchecken automatisch erfasst.
 
 **Abbrechen:** User kann eigene ausstehende Vorregistrierungen auf `cancelled` setzen. Admin kann löschen.
 
@@ -761,7 +769,7 @@ Erreichbar unter `/settings`. Vier Tabs für Admins, ein Tab für normale Benutz
 - Löschen: hard-delete wenn keine Besuche erfasst; sonst Deaktivierung (Historien-Schutz)
 - Rollenwechsel: `user` ↔ `admin`
 
-**Mitarbeiterverwaltung** (Ansprechpartner für Besucher) ist eine separate Seite (`/hosts`), erreichbar über die Sidebar.
+**Gastgeberverwaltung** (Ansprechpartner für Besucher) ist eine separate Seite (`/hosts`), erreichbar über die Sidebar.
 
 ---
 
