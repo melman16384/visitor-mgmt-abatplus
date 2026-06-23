@@ -8,19 +8,22 @@ import { showToast } from '../components/Layout';
 
 function StatCard({ icon: Icon, label, value, color = 'blue' }) {
   const colors = {
-    blue: 'bg-abat-blau/10 text-abat-blau',
-    green: 'bg-green-100 text-green-600',
-    gray: 'bg-gray-100 text-gray-500',
-    orange: 'bg-orange-100 text-orange-600',
+    blue:   { bg: 'bg-abat-blau',    icon: 'text-white', card: 'bg-abat-blau text-white', val: 'text-white', lbl: 'text-blue-100' },
+    green:  { bg: 'bg-green-500',    icon: 'text-white', card: 'bg-green-500 text-white',  val: 'text-white', lbl: 'text-green-100' },
+    gray:   { bg: 'bg-gray-400',     icon: 'text-white', card: 'bg-gray-400 text-white',   val: 'text-white', lbl: 'text-gray-100' },
+    orange: { bg: 'bg-orange-500',   icon: 'text-white', card: 'bg-orange-500 text-white', val: 'text-white', lbl: 'text-orange-100' },
   };
+  const c = colors[color];
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex items-center gap-4">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${colors[color]}`}>
-        <Icon size={22} />
+    <div className={`${c.card} rounded-2xl p-4 shadow-sm flex flex-col gap-2`}>
+      <div className="flex items-center justify-between">
+        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+          <Icon size={20} className={c.icon} />
+        </div>
       </div>
       <div>
-        <p className="text-2xl font-bold text-gray-900">{value ?? '–'}</p>
-        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-3xl font-extrabold leading-none">{value ?? '–'}</p>
+        <p className={`text-xs font-medium mt-1 ${c.lbl}`}>{label}</p>
       </div>
     </div>
   );
@@ -50,48 +53,60 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-5">
+      {/* Header — only visible on desktop (mobile shows it in Layout header) */}
+      <div className="hidden md:flex items-center justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">{format(new Date(), 'EEEE, d. MMMM yyyy', { locale: de })}</p>
         </div>
         <button
           onClick={() => setShowCheckin(true)}
-          className="flex items-center gap-2 bg-abat-blau hover:bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors"
+          className="flex items-center gap-2 bg-abat-blau hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors"
         >
           <UserPlus size={18} />
-          <span className="hidden sm:inline">Besucher einchecken</span>
-          <span className="sm:hidden">Check-in</span>
+          Besucher einchecken
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Users} label="Aktuell anwesend" value={stats?.currentlyIn} color="blue" />
-        <StatCard icon={UserCheck} label="Heute eingecheckt" value={stats?.todayTotal} color="green" />
-        <StatCard icon={UserMinus} label="Heute ausgecheckt" value={stats?.checkedOutToday} color="gray" />
-        <StatCard icon={CalendarCheck} label="Vorregistrierungen offen" value={stats?.pendingPrereg} color="orange" />
+      {/* Mobile date + big check-in button */}
+      <div className="md:hidden">
+        <p className="text-xs text-gray-400 mb-3">{format(new Date(), 'EEEE, d. MMMM yyyy', { locale: de })}</p>
+        <button
+          onClick={() => setShowCheckin(true)}
+          className="w-full flex items-center justify-center gap-3 bg-abat-blau hover:bg-primary-600 text-white py-4 rounded-2xl text-base font-bold shadow-lg transition-colors active:scale-[0.98]"
+        >
+          <UserPlus size={22} />
+          Besucher einchecken
+        </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={Users}        label="Aktuell anwesend"       value={stats?.currentlyIn}    color="blue" />
+        <StatCard icon={UserCheck}    label="Heute eingecheckt"      value={stats?.todayTotal}      color="green" />
+        <StatCard icon={UserMinus}    label="Heute ausgecheckt"      value={stats?.checkedOutToday} color="gray" />
+        <StatCard icon={CalendarCheck} label="Vorregistr. offen"     value={stats?.pendingPrereg}   color="orange" />
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Letzte Aktivitäten</h2>
+          <h2 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h2>
         </div>
         {recent.length === 0 ? (
           <div className="py-12 text-center text-gray-400 text-sm">Noch keine Aktivitäten</div>
         ) : (
           <div className="divide-y divide-gray-50">
             {recent.map(v => (
-              <div key={v.id} className="px-5 py-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-abat-blau/10 flex items-center justify-center text-abat-blau font-semibold text-sm flex-shrink-0">
+              <div key={v.id} className="px-4 py-3.5 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-abat-blau/10 flex items-center justify-center text-abat-blau font-bold text-sm flex-shrink-0">
                   {v.first_name?.[0]}{v.last_name?.[0]}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-800 text-sm truncate">{v.first_name} {v.last_name}</p>
-                  <p className="text-xs text-gray-400 truncate">
+                  <p className="font-semibold text-gray-800 text-sm truncate">{v.first_name} {v.last_name}</p>
+                  <p className="text-xs text-gray-400 truncate leading-snug mt-0.5">
                     {v.company ? `${v.company} · ` : ''}
                     {v.host_name ? `bei ${v.host_name}` : ''}
-                    {v.checked_in_by_name ? ` · erfasst durch ${v.checked_in_by_name}` : ''}
+                    {v.checked_in_by_name ? ` · von ${v.checked_in_by_name}` : ''}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">

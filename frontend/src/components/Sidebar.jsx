@@ -1,107 +1,65 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCheck, CalendarCheck, Settings, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
+import { LayoutDashboard, Users, UserCheck, CalendarCheck, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+
+const NAV_ITEMS = [
+  { to: '/dashboard',        label: 'Dashboard',          short: 'Dashboard',  icon: LayoutDashboard },
+  { to: '/visitors',         label: 'Besucher',           short: 'Besucher',   icon: Users },
+  { to: '/preregistrations', label: 'Vorregistrierungen', short: 'Voranmeld.', icon: CalendarCheck },
+  { to: '/hosts',            label: 'Mitarbeiter',        short: 'Mitarb.',    icon: UserCheck },
+];
+const ADMIN_ITEMS = [
+  { to: '/settings', label: 'Einstellungen', short: 'Einstellg.', icon: Settings },
+];
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const { user } = useAuth();
+  const allItems = [...NAV_ITEMS, ...(user?.role === 'admin' ? ADMIN_ITEMS : [])];
 
-  const navItems = [
-    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/visitors', label: 'Besucher', icon: Users },
-    { to: '/preregistrations', label: 'Vorregistrierungen', icon: CalendarCheck },
-    { to: '/hosts', label: 'Mitarbeiter', icon: UserCheck },
-  ];
-
-  const adminItems = user?.role === 'admin'
-    ? [{ to: '/settings', label: 'Einstellungen', icon: Settings }]
-    : [];
-
-  const NavItems = ({ onClick }) => (
+  return (
     <>
-      <div className="space-y-1 px-2">
-        {navItems.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={onClick}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
-              ${isActive ? 'bg-abat-blau text-white shadow-lg' : 'text-abat-hellgrau hover:bg-abat-blau/20 hover:text-white'}
-              ${collapsed ? 'justify-center' : ''}`
-            }
-            title={collapsed ? label : undefined}
-          >
-            <Icon size={18} className="flex-shrink-0" />
-            {!collapsed && <span>{label}</span>}
-          </NavLink>
-        ))}
-      </div>
+      {/* ── Desktop sidebar ─────────────────────────────────── */}
+      <aside className={`hidden md:flex ${collapsed ? 'w-16' : 'w-60'} flex-shrink-0 bg-abat-dunkelgrau text-white flex-col transition-all duration-300 ease-in-out`}>
+        <div className={`flex items-center px-4 py-5 border-b border-white/10 ${collapsed ? 'justify-center' : ''}`}>
+          {!collapsed
+            ? <img src="/logo-light.png" alt="abat AG" className="h-9" />
+            : <div className="w-8 h-8 bg-abat-blau rounded-lg flex items-center justify-center text-white text-xs font-bold">a</div>
+          }
+        </div>
 
-      {adminItems.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-white/10 px-2 space-y-1">
-          {!collapsed && <p className="px-3 text-xs text-abat-grau uppercase tracking-wider mb-2">Administration</p>}
-          {adminItems.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={onClick}
+        <nav className="flex-1 py-4 overflow-y-auto space-y-1 px-2">
+          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+            <NavLink key={to} to={to}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
-                ${isActive ? 'bg-abat-blau text-white' : 'text-abat-hellgrau hover:bg-abat-blau/20 hover:text-white'}
-                ${collapsed ? 'justify-center' : ''}`
-              }
+                ${isActive ? 'bg-abat-blau text-white shadow-md' : 'text-abat-hellgrau hover:bg-abat-blau/20 hover:text-white'}
+                ${collapsed ? 'justify-center' : ''}`}
               title={collapsed ? label : undefined}
             >
               <Icon size={18} className="flex-shrink-0" />
               {!collapsed && <span>{label}</span>}
             </NavLink>
           ))}
-        </div>
-      )}
-    </>
-  );
 
-  return (
-    <>
-      {/* Mobile hamburger button */}
-      <button
-        className="fixed top-3 left-3 z-50 md:hidden bg-abat-dunkelgrau text-white p-2 rounded-lg shadow-lg"
-        onClick={() => setMobileOpen(o => !o)}
-      >
-        <Menu size={20} />
-      </button>
-
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMobileOpen(false)}>
-          <div className="absolute inset-0 bg-black/50" />
-        </div>
-      )}
-
-      {/* Mobile sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-abat-dunkelgrau text-white flex flex-col transition-transform duration-300 md:hidden ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
-          <img src="/logo-light.png" alt="abat AG" className="h-10" />
-        </div>
-        <nav className="flex-1 py-4 overflow-y-auto">
-          <NavItems onClick={() => setMobileOpen(false)} />
-        </nav>
-      </aside>
-
-      {/* Desktop sidebar */}
-      <aside className={`hidden md:flex ${collapsed ? 'w-16' : 'w-64'} flex-shrink-0 bg-abat-dunkelgrau text-white flex-col transition-all duration-300 ease-in-out`}>
-        <div className={`flex items-center gap-3 px-4 py-5 border-b border-white/10 ${collapsed ? 'justify-center' : ''}`}>
-          {!collapsed
-            ? <img src="/logo-light.png" alt="abat AG" className="h-10" />
-            : <div className="w-8 h-8 bg-abat-blau rounded-lg flex items-center justify-center"><span className="text-white text-xs font-bold">a</span></div>
-          }
-        </div>
-
-        <nav className="flex-1 py-4 overflow-y-auto">
-          <NavItems />
+          {user?.role === 'admin' && (
+            <div className="mt-4 pt-4 border-t border-white/10 space-y-1">
+              {!collapsed && <p className="px-3 text-xs text-abat-grau uppercase tracking-wider mb-2">Administration</p>}
+              {ADMIN_ITEMS.map(({ to, label, icon: Icon }) => (
+                <NavLink key={to} to={to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150
+                    ${isActive ? 'bg-abat-blau text-white' : 'text-abat-hellgrau hover:bg-abat-blau/20 hover:text-white'}
+                    ${collapsed ? 'justify-center' : ''}`}
+                  title={collapsed ? label : undefined}
+                >
+                  <Icon size={18} className="flex-shrink-0" />
+                  {!collapsed && <span>{label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div className="border-t border-white/10 px-2 py-2">
@@ -113,6 +71,24 @@ export default function Sidebar() {
           </button>
         </div>
       </aside>
+
+      {/* ── Mobile bottom tab bar ───────────────────────────── */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 md:hidden bg-abat-dunkelgrau border-t border-white/10 flex">
+        {allItems.map(({ to, short, icon: Icon }) => (
+          <NavLink key={to} to={to}
+            className={({ isActive }) =>
+              `flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors
+              ${isActive ? 'text-abat-hellblau' : 'text-white/40'}`}
+          >
+            {({ isActive }) => (
+              <>
+                <Icon size={21} />
+                <span className={`text-[10px] font-semibold leading-tight ${isActive ? 'text-abat-hellblau' : 'text-white/40'}`}>{short}</span>
+              </>
+            )}
+          </NavLink>
+        ))}
+      </nav>
     </>
   );
 }

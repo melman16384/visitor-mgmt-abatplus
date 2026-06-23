@@ -72,26 +72,26 @@ export default function Visitors() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Besucher</h1>
+      {/* Header — desktop only (mobile uses Layout header) */}
+      <div className="hidden md:flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Besucher</h1>
         <button
           onClick={() => setShowCheckin(true)}
-          className="flex items-center gap-2 bg-abat-blau hover:bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors"
+          className="flex items-center gap-2 bg-abat-blau hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors"
         >
           <UserPlus size={18} />
-          <span className="hidden sm:inline">Einchecken</span>
+          Einchecken
         </button>
       </div>
 
       {/* Tabs + Search */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl self-start">
           {tabs.map(t => (
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === t.key ? 'bg-white text-abat-blau shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === t.key ? 'bg-white text-abat-blau shadow-sm' : 'text-gray-500'}`}
             >
               {t.label}
             </button>
@@ -103,9 +103,20 @@ export default function Visitors() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Name oder Unternehmen suchen…"
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-abat-blau"
+            className="w-full pl-9 pr-4 py-3 md:py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-abat-blau"
           />
         </div>
+      </div>
+
+      {/* Mobile: floating check-in button */}
+      <div className="md:hidden">
+        <button
+          onClick={() => setShowCheckin(true)}
+          className="w-full flex items-center justify-center gap-2 bg-abat-blau text-white py-3.5 rounded-xl text-sm font-bold shadow-md active:scale-[0.98] transition-all"
+        >
+          <UserPlus size={18} />
+          Besucher einchecken
+        </button>
       </div>
 
       {/* Desktop Table */}
@@ -169,43 +180,65 @@ export default function Visitors() {
       </div>
 
       {/* Mobile Card View */}
-      <div className="md:hidden space-y-3">
+      <div className="md:hidden space-y-2.5">
         {visitors.length === 0 ? (
-          <div className="bg-white rounded-xl p-8 text-center text-gray-400 text-sm shadow-sm border border-gray-100">Keine Einträge</div>
+          <div className="bg-white rounded-2xl p-10 text-center text-gray-400 text-sm shadow-sm border border-gray-100">
+            <Users size={32} className="mx-auto mb-3 opacity-25" />
+            Keine Einträge
+          </div>
         ) : visitors.map(v => (
-          <div key={v.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <Avatar first={v.first_name} last={v.last_name} />
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-800">{v.first_name} {v.last_name}</p>
-                  {v.company && <p className="text-xs text-gray-400 truncate">{v.company}</p>}
-                </div>
+          <div key={v.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {/* Card header */}
+            <div className="px-4 pt-4 pb-3 flex items-center gap-3">
+              <Avatar first={v.first_name} last={v.last_name} />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-gray-900 leading-tight">{v.first_name} {v.last_name}</p>
+                {v.company && <p className="text-xs text-gray-400 truncate mt-0.5">{v.company}</p>}
               </div>
               <StatusBadge status={v.visit_status} />
             </div>
-            <div className="mt-3 space-y-1 text-xs text-gray-500">
-              {v.host_name && <p>Mitarbeiter: <span className="text-gray-700">{v.host_name}</span></p>}
-              {v.checked_in_at && <p>Check-in: <span className="text-gray-700">{format(new Date(v.checked_in_at), 'dd.MM. HH:mm', { locale: de })}</span></p>}
-              {v.checked_in_by_name && <p>Erfasst durch: <span className="text-gray-700">{v.checked_in_by_name}</span></p>}
+
+            {/* Meta row */}
+            <div className="px-4 pb-3 grid grid-cols-2 gap-x-3 gap-y-1">
+              {v.host_name && (
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mitarbeiter</p>
+                  <p className="text-xs text-gray-700 font-medium truncate">{v.host_name}</p>
+                </div>
+              )}
+              {v.checked_in_at && (
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Check-in</p>
+                  <p className="text-xs text-gray-700 font-medium">{format(new Date(v.checked_in_at), 'dd.MM. HH:mm', { locale: de })}</p>
+                </div>
+              )}
+              {v.checked_in_by_name && (
+                <div className="col-span-2">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Erfasst durch</p>
+                  <p className="text-xs text-gray-700 font-medium">{v.checked_in_by_name}</p>
+                </div>
+              )}
             </div>
+
+            {/* Actions */}
             {(v.visit_status === 'active' || user?.role === 'admin') && (
-              <div className="mt-3 flex gap-2">
+              <div className="border-t border-gray-100 flex">
                 {v.visit_status === 'active' && v.visit_id && (
                   <button
                     onClick={() => handleCheckout(v.visit_id)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-abat-blau text-white rounded-lg text-xs font-semibold"
+                    className="flex-1 flex items-center justify-center gap-2 py-3 text-abat-blau text-sm font-semibold active:bg-blue-50 transition-colors"
                   >
-                    <LogOut size={14} />
+                    <LogOut size={16} />
                     Auschecken
                   </button>
                 )}
                 {user?.role === 'admin' && (
                   <button
                     onClick={() => handleDelete(v.id)}
-                    className="px-3 py-2 text-red-400 border border-red-100 hover:bg-red-50 rounded-lg text-xs"
+                    className={`flex items-center justify-center gap-1 px-4 py-3 text-red-400 text-xs font-medium active:bg-red-50 transition-colors ${v.visit_status === 'active' ? 'border-l border-gray-100' : 'flex-1'}`}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={15} />
+                    {v.visit_status !== 'active' && 'Löschen'}
                   </button>
                 )}
               </div>
