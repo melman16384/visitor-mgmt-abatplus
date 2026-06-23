@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Plus, LogOut, Trash2, UserPlus, ChevronDown } from 'lucide-react';
+import { Search, Users, LogOut, Trash2, UserPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import api from '../api/client';
