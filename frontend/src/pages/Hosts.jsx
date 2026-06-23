@@ -37,10 +37,10 @@ export default function Hosts() {
     try {
       if (editId) {
         await api.put(`/hosts/${editId}`, form);
-        showToast('Mitarbeiter aktualisiert');
+        showToast('Gastgeber aktualisiert');
       } else {
         await api.post('/hosts', form);
-        showToast('Mitarbeiter hinzugefügt');
+        showToast('Gastgeber hinzugefügt');
       }
       setShowForm(false);
       setForm(emptyForm);
@@ -54,7 +54,7 @@ export default function Hosts() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Mitarbeiter entfernen?')) return;
+    if (!confirm('Gastgeber entfernen?')) return;
     try {
       await api.delete(`/hosts/${id}`);
       showToast('Entfernt');
@@ -77,7 +77,7 @@ export default function Hosts() {
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Mitarbeiter</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Gastgeber</h1>
           <p className="text-sm text-gray-500 mt-0.5">Ansprechpartner für Besucher · wird automatisch bei Microsoft-Login angelegt</p>
         </div>
         {isAdmin && (
@@ -103,7 +103,7 @@ export default function Hosts() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {hosts.length === 0 ? (
-              <tr><td colSpan={3} className="py-12 text-center text-gray-400">Noch keine Mitarbeiter — werden automatisch bei erstem Microsoft-Login angelegt</td></tr>
+              <tr><td colSpan={3} className="py-12 text-center text-gray-400">Noch keine Gastgeber — werden automatisch bei erstem Microsoft-Login angelegt</td></tr>
             ) : hosts.map(h => (
               <tr key={h.id} className="hover:bg-gray-50/50 transition-colors">
                 <td className="px-4 py-3">
@@ -160,7 +160,7 @@ export default function Hosts() {
       </div>
 
       {showForm && (
-        <Modal title={editId ? 'Mitarbeiter bearbeiten' : 'Mitarbeiter hinzufügen'} onClose={() => setShowForm(false)}>
+        <Modal title={editId ? 'Gastgeber bearbeiten' : 'Gastgeber hinzufügen'} onClose={() => setShowForm(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Name *</label>

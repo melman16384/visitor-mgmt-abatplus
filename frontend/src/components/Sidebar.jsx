@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   { to: '/dashboard',        label: 'Dashboard',          short: 'Dashboard',  icon: LayoutDashboard },
   { to: '/visitors',         label: 'Besucher',           short: 'Besucher',   icon: Users },
   { to: '/preregistrations', label: 'Vorregistrierungen', short: 'Voranmeld.', icon: CalendarCheck },
-  { to: '/hosts',            label: 'Mitarbeiter',        short: 'Mitarb.',    icon: UserCheck },
+  { to: '/hosts',            label: 'Gastgeber',          short: 'Gastgeb.',   icon: UserCheck },
 ];
 const ADMIN_ITEMS = [
   { to: '/settings', label: 'Einstellungen', short: 'Einstellg.', icon: Settings },
@@ -24,8 +24,8 @@ export default function Sidebar() {
       <aside className={`hidden md:flex ${collapsed ? 'w-16' : 'w-60'} flex-shrink-0 bg-abat-dunkelgrau text-white flex-col transition-all duration-300 ease-in-out`}>
         <div className={`flex items-center px-4 py-5 border-b border-white/10 ${collapsed ? 'justify-center' : ''}`}>
           {!collapsed
-            ? <img src="/logo-light.png" alt="abat AG" className="h-9" />
-            : <div className="w-8 h-8 bg-abat-blau rounded-lg flex items-center justify-center text-white text-xs font-bold">a</div>
+            ? <span className="text-white font-bold text-lg tracking-tight">abat<span className="text-abat-hellblau">+</span></span>
+            : <div className="w-8 h-8 bg-abat-blau rounded-lg flex items-center justify-center text-white text-xs font-bold">a+</div>
           }
         </div>
 

@@ -8,7 +8,7 @@ const PAGE_TITLES = {
   '/dashboard':        'Dashboard',
   '/visitors':         'Besucher',
   '/preregistrations': 'Vorregistrierungen',
-  '/hosts':            'Mitarbeiter',
+  '/hosts':            'Gastgeber',
   '/settings':         'Einstellungen',
 };
 

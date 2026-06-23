@@ -55,9 +55,9 @@ export default function Login() {
       <div className="relative w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-abat-dunkelgrau px-8 py-8 text-center">
-            <img src="/logo-light.png" alt="abat AG" className="h-14 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-white">Besucherverwaltung</h1>
-            <p className="text-abat-hellgrau text-sm mt-1">abat+ Eingangsregistrierung</p>
+            <p className="text-3xl font-bold text-white tracking-tight mb-3">abat<span className="text-abat-hellblau">+</span></p>
+            <h1 className="text-xl font-bold text-white">Besucherverwaltung</h1>
+            <p className="text-abat-hellgrau text-sm mt-1">Eingangsregistrierung</p>
           </div>
 
           <div className="px-8 py-8 space-y-4">

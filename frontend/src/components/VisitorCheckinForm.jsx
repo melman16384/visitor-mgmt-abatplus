@@ -89,7 +89,7 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mitarbeiter (Ansprechpartner) *</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Gastgeber (Ansprechpartner) *</label>
             <select name="host_id" value={form.host_id} onChange={handleChange} required className={`${inp} appearance-none`}>
               <option value="">– bitte wählen –</option>
               {hosts.map(h => (

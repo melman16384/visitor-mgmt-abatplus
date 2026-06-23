@@ -163,7 +163,7 @@ export default function PreRegistration() {
                   </div>
                   <div className="mt-1 text-xs text-gray-500 space-y-0.5">
                     {item.visitor_company && <p>{item.visitor_company}</p>}
-                    {item.host_name && <p>Mitarbeiter: {item.host_name}</p>}
+                    {item.host_name && <p>Gastgeber: {item.host_name}</p>}
                     {item.expected_date && (
                       <p>Erwartet: {format(new Date(item.expected_date + 'T12:00:00'), 'dd.MM.yyyy', { locale: de })}
                         {item.expected_time ? ` um ${item.expected_time}` : ''}
@@ -225,7 +225,7 @@ export default function PreRegistration() {
               <input value={form.visitor_company} onChange={e => setForm(f => ({ ...f, visitor_company: e.target.value }))} className={inp} placeholder="Optional" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Mitarbeiter *</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Gastgeber *</label>
               <select value={form.host_id} onChange={e => setForm(f => ({ ...f, host_id: e.target.value }))} required className={`${inp} bg-white`}>
                 <option value="">– bitte wählen –</option>
                 {hosts.map(h => <option key={h.id} value={h.id}>{h.name}{h.email ? ` – ${h.email}` : ''}</option>)}

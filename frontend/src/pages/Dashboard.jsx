@@ -5,6 +5,7 @@ import { de } from 'date-fns/locale';
 import api from '../api/client';
 import VisitorCheckinForm from '../components/VisitorCheckinForm';
 import { showToast } from '../components/Layout';
+import { useAuth } from '../context/AuthContext';
 
 function StatCard({ icon: Icon, label, value, color = 'blue' }) {
   const colors = {
@@ -33,13 +34,15 @@ function StatusBadge({ status }) {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
   const [showCheckin, setShowCheckin] = useState(false);
 
   const loadData = () => {
     api.get('/dashboard/stats').then(r => setStats(r.data)).catch(() => {});
-    api.get('/dashboard/recent').then(r => setRecent(r.data)).catch(() => {});
+    if (isAdmin) api.get('/dashboard/recent').then(r => setRecent(r.data)).catch(() => {});
   };
 
   useEffect(() => { loadData(); }, []);
@@ -86,38 +89,40 @@ export default function Dashboard() {
         <StatCard icon={CalendarCheck} label="Vorregistr. offen"     value={stats?.pendingPrereg}   color="orange" />
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h2>
-        </div>
-        {recent.length === 0 ? (
-          <div className="py-12 text-center text-gray-400 text-sm">Noch keine Aktivitäten</div>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {recent.map(v => (
-              <div key={v.id} className="px-4 py-3.5 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-abat-blau/10 flex items-center justify-center text-abat-blau font-bold text-sm flex-shrink-0">
-                  {v.first_name?.[0]}{v.last_name?.[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-800 text-sm truncate">{v.first_name} {v.last_name}</p>
-                  <p className="text-xs text-gray-400 truncate leading-snug mt-0.5">
-                    {v.company ? `${v.company} · ` : ''}
-                    {v.host_name ? `bei ${v.host_name}` : ''}
-                    {v.checked_in_by_name ? ` · von ${v.checked_in_by_name}` : ''}
-                  </p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <StatusBadge status={v.status} />
-                  <p className="text-xs text-gray-400 mt-1">
-                    {format(new Date(v.checked_in_at), 'HH:mm', { locale: de })}
-                  </p>
-                </div>
-              </div>
-            ))}
+      {isAdmin && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h2>
           </div>
-        )}
-      </div>
+          {recent.length === 0 ? (
+            <div className="py-12 text-center text-gray-400 text-sm">Noch keine Aktivitäten</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {recent.map(v => (
+                <div key={v.id} className="px-4 py-3.5 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-abat-blau/10 flex items-center justify-center text-abat-blau font-bold text-sm flex-shrink-0">
+                    {v.first_name?.[0]}{v.last_name?.[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-800 text-sm truncate">{v.first_name} {v.last_name}</p>
+                    <p className="text-xs text-gray-400 truncate leading-snug mt-0.5">
+                      {v.company ? `${v.company} · ` : ''}
+                      {v.host_name ? `bei ${v.host_name}` : ''}
+                      {v.checked_in_by_name ? ` · von ${v.checked_in_by_name}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <StatusBadge status={v.status} />
+                    <p className="text-xs text-gray-400 mt-1">
+                      {format(new Date(v.checked_in_at), 'HH:mm', { locale: de })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {showCheckin && (
         <VisitorCheckinForm

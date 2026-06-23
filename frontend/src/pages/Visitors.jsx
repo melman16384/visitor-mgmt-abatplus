@@ -125,7 +125,7 @@ export default function Visitors() {
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Besucher</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Mitarbeiter</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Gastgeber</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Einchecken</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Erfasst durch</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
@@ -202,7 +202,7 @@ export default function Visitors() {
             <div className="px-4 pb-3 grid grid-cols-2 gap-x-3 gap-y-1">
               {v.host_name && (
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mitarbeiter</p>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Gastgeber</p>
                   <p className="text-xs text-gray-700 font-medium truncate">{v.host_name}</p>
                 </div>
               )}
