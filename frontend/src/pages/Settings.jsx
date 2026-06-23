@@ -50,18 +50,22 @@ function AutoCheckoutTab() {
     <div className="space-y-6">
       <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
         <h3 className="font-semibold text-gray-800">Automatischer Checkout</h3>
-        <label className="flex items-center justify-between cursor-pointer">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <p className="font-medium text-gray-700">Auto-Checkout aktiviert</p>
             <p className="text-xs text-gray-400 mt-0.5">Alle aktiven Besucher werden zur konfigurierten Uhrzeit automatisch ausgecheckt</p>
           </div>
-          <button
+          <div
             onClick={() => setEnabled(e => !e)}
-            className={`relative w-12 h-6 rounded-full transition-colors ${enabled ? 'bg-abat-blau' : 'bg-gray-300'}`}
+            role="switch"
+            aria-checked={enabled}
+            tabIndex={0}
+            onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && setEnabled(v => !v)}
+            className={`relative flex-shrink-0 w-12 h-6 rounded-full cursor-pointer transition-colors ${enabled ? 'bg-abat-blau' : 'bg-gray-300'}`}
           >
-            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
-          </button>
-        </label>
+            <span className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+          </div>
+        </div>
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Checkout-Zeit</label>
           <input type="time" value={time} onChange={e => setTime(e.target.value)} className={inp} disabled={!enabled} />

@@ -8,22 +8,20 @@ import { showToast } from '../components/Layout';
 
 function StatCard({ icon: Icon, label, value, color = 'blue' }) {
   const colors = {
-    blue:   { bg: 'bg-abat-blau',    icon: 'text-white', card: 'bg-abat-blau text-white', val: 'text-white', lbl: 'text-blue-100' },
-    green:  { bg: 'bg-green-500',    icon: 'text-white', card: 'bg-green-500 text-white',  val: 'text-white', lbl: 'text-green-100' },
-    gray:   { bg: 'bg-gray-400',     icon: 'text-white', card: 'bg-gray-400 text-white',   val: 'text-white', lbl: 'text-gray-100' },
-    orange: { bg: 'bg-orange-500',   icon: 'text-white', card: 'bg-orange-500 text-white', val: 'text-white', lbl: 'text-orange-100' },
+    blue:   { icon: 'text-abat-blau',   iconBg: 'bg-blue-50',   val: 'text-gray-900' },
+    green:  { icon: 'text-green-600',   iconBg: 'bg-green-50',  val: 'text-gray-900' },
+    gray:   { icon: 'text-gray-500',    iconBg: 'bg-gray-100',  val: 'text-gray-900' },
+    orange: { icon: 'text-orange-500',  iconBg: 'bg-orange-50', val: 'text-gray-900' },
   };
   const c = colors[color];
   return (
-    <div className={`${c.card} rounded-2xl p-4 shadow-sm flex flex-col gap-2`}>
-      <div className="flex items-center justify-between">
-        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-          <Icon size={20} className={c.icon} />
-        </div>
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col gap-3">
+      <div className={`w-10 h-10 ${c.iconBg} rounded-xl flex items-center justify-center`}>
+        <Icon size={20} className={c.icon} />
       </div>
       <div>
-        <p className="text-3xl font-extrabold leading-none">{value ?? '–'}</p>
-        <p className={`text-xs font-medium mt-1 ${c.lbl}`}>{label}</p>
+        <p className={`text-3xl font-extrabold leading-none ${c.val}`}>{value ?? '–'}</p>
+        <p className="text-xs font-medium text-gray-400 mt-1">{label}</p>
       </div>
     </div>
   );
