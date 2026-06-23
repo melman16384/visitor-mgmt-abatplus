@@ -1,6 +1,6 @@
-# Installationsanleitung — Besucherverwaltungssystem
+# Installationsanleitung — Besucherverwaltung abat+
 
-> Zielumgebung: Ubuntu/Debian Server · Node.js 22+ · Nginx
+> Zielumgebung: Ubuntu/Debian · Node.js 22+ · Nginx · Cloudflare
 
 ---
 
@@ -11,16 +11,16 @@
 3. [Backend konfigurieren](#3-backend-konfigurieren)
 4. [Frontend bauen](#4-frontend-bauen)
 5. [Nginx einrichten](#5-nginx-einrichten)
-6. [SSL-Zertifikat einrichten](#6-ssl-zertifikat-einrichten)
+6. [SSL-Zertifikat (Cloudflare Origin Cert)](#6-ssl-zertifikat-cloudflare-origin-cert)
 7. [Backend mit pm2 starten](#7-backend-mit-pm2-starten)
 8. [Erster Start & Test](#8-erster-start--test)
 9. [Cloudflare konfigurieren](#9-cloudflare-konfigurieren)
+10. [Updates einspielen](#10-updates-einspielen)
+11. [Datenbank-Backup](#11-datenbank-backup)
 
 ---
 
 ## 1. Voraussetzungen
-
-> **Netzwerk-Hinweis (Minimal-Prinzip):** Während der Installation werden `registry.npmjs.org:443`, `deb.nodesource.com:443` und `github.com:443` benötigt. Im laufenden Betrieb gibt es keine externen Abhängigkeiten — nur euer SMTP-Server und der Etikettendrucker im LAN. Details: [Netzwerk & Firewall-Freigaben](dokumentation.md#25-netzwerk--firewall-freigaben)
 
 ```bash
 # Node.js 22 installieren
@@ -34,6 +34,9 @@ apt install -y nginx
 node -v    # v22.x oder höher
 npm -v
 nginx -v
+
+# pm2 global installieren
+npm install -g pm2
 ```
 
 ---
@@ -41,19 +44,14 @@ nginx -v
 ## 2. Projekt einrichten
 
 ```bash
-# Zielverzeichnis erstellen
-mkdir -p /opt/visitor-mgmt
-cd /opt/visitor-mgmt
+mkdir -p /opt/visitor-mgmt-abatplus
+cd /opt/visitor-mgmt-abatplus
 
-# Repository klonen (privat — SSH-Key oder Token erforderlich)
-git clone https://github.com/melman16384/visitor-mgmt.git .
+# Repository klonen
+git clone <repo-url> .
 
-# Backend-Abhängigkeiten installieren
-cd /opt/visitor-mgmt/backend
-npm install
-
-# Frontend-Abhängigkeiten installieren
-cd /opt/visitor-mgmt/frontend
+# Abhängigkeiten installieren
+cd /opt/visitor-mgmt-abatplus/backend && npm install
 npm install
 ```
 
@@ -62,57 +60,28 @@ npm install
 ## 3. Backend konfigurieren
 
 ```bash
-cd /opt/visitor-mgmt/backend
+cd /opt/visitor-mgmt-abatplus/backend
 cp .env.example .env
 nano .env
 ```
 
-`.env` ausfüllen:
+`.env` Inhalt:
 
 ```env
 PORT=3001
-JWT_SECRET=<langer-zufälliger-string>   # z.B. openssl rand -hex 64
-DB_PATH=/opt/visitor-mgmt/backend/data/visitors.db   # absoluten Pfad verwenden (siehe Hinweis)
+JWT_SECRET=<openssl rand -hex 64>
+DB_PATH=/opt/visitor-mgmt-abatplus/backend/data/visitors.db
+APP_URL=https://visitorplus.luwilab.work
 
-SMTP_HOST=smtp.gmail.com        # Fallback — kann auch im Admin-Panel gesetzt werden
-SMTP_PORT=587
-SMTP_SECURITY=starttls          # ssl, starttls oder none
-SMTP_USER=deine@email.de
-SMTP_PASS=dein-app-passwort
-FROM_EMAIL=noreply@firma.de
-COMPANY_NAME=Firmenname GmbH
-
-# Öffentliche URL der App (für E-Mail-Links und CORS)
-FRONTEND_URL=https://besucher.meinefirma.de
-APP_URL=https://besucher.meinefirma.de
-
-# Optionaler initialer Admin-Account (Standard: admin@example.com / ChangeMe123!)
-# ADMIN_EMAIL=admin@meinefirma.de
+# Initialer Admin (nur beim allerersten Start wirksam)
+# ADMIN_EMAIL=admin@abat.de
 # ADMIN_PASSWORD=SicheresPasswort123!
 ```
-
-> **JWT_SECRET** niemals leer lassen und nicht in Git einchecken.
->
-> **DB_PATH absolut setzen:** Bei einem relativen Pfad (`./data/visitors.db`) hängt die genutzte
-> Datenbank vom Startverzeichnis des Prozesses ab. Wird das Backend versehentlich aus einem anderen
-> Verzeichnis gestartet (z.B. durch pm2-cwd, ein Cron-Backup oder einen manuellen `node`-Aufruf aus
-> dem Repo-Root), legt SQLite eine **zweite, leere** `visitors.db` an — die App wirkt dann „leer" oder
-> Logins schlagen fehl. Ein absoluter Pfad verhindert das zuverlässig.
 
 Datenbankverzeichnis anlegen:
 
 ```bash
-mkdir -p /opt/visitor-mgmt/backend/data
-mkdir -p /opt/visitor-mgmt/backend/uploads/documents
-mkdir -p /opt/visitor-mgmt/backend/uploads/signatures
-```
-
-Datenbank initialisieren (wird beim ersten Start automatisch erstellt):
-
-```bash
-cd /opt/visitor-mgmt/backend
-node src/index.js
-# Strg+C nach "Server running on port 3001"
+mkdir -p /opt/visitor-mgmt-abatplus/backend/data
 ```
 
 ---
@@ -120,19 +89,17 @@ node src/index.js
 ## 4. Frontend bauen
 
 ```bash
-cd /opt/visitor-mgmt/frontend
+cd /opt/visitor-mgmt-abatplus/frontend
 npm run build
-# Erzeugt /opt/visitor-mgmt/frontend/dist/
+# Erzeugt: /opt/visitor-mgmt-abatplus/frontend/dist/
 ```
 
 ---
 
 ## 5. Nginx einrichten
 
-Konfigurationsdatei erstellen:
-
 ```bash
-nano /etc/nginx/sites-available/visitor-mgmt
+nano /etc/nginx/sites-available/visitorplus.luwilab.work
 ```
 
 Inhalt:
@@ -140,22 +107,25 @@ Inhalt:
 ```nginx
 server {
     listen 80;
-    server_name deine-domain.de;
+    server_name visitorplus.luwilab.work;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name deine-domain.de;
+    server_name visitorplus.luwilab.work;
 
-    ssl_certificate     /etc/ssl/visitor-mgmt/cert.pem;
-    ssl_certificate_key /etc/ssl/visitor-mgmt/key.pem;
+    ssl_certificate     /etc/ssl/visitorplus/cert.pem;
+    ssl_certificate_key /etc/ssl/visitorplus/key.pem;
 
-    # React SPA
-    root /opt/visitor-mgmt/frontend/dist;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none';" always;
+
+    root /opt/visitor-mgmt-abatplus/frontend/dist;
     index index.html;
 
-    # index.html nie cachen (Browser lädt sonst altes JS nach Updates)
     location = /index.html {
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
         expires 0;
@@ -166,28 +136,26 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # API Proxy
     location /api/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        client_max_body_size 25M;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        client_max_body_size 10M;
     }
 
-    # Uploads
-    location /uploads/ {
-        proxy_pass http://127.0.0.1:3001;
-    }
-
-    # Caching für statische Assets (Vite-gehashte Dateinamen → sicher für 1y)
-    location ~* \.(js|css|png|jpg|svg|ttf|woff2)$ {
+    location ~* \.(js|css|png|jpg|svg|woff|woff2)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+        access_log off;
     }
 
     gzip on;
+    gzip_comp_level 6;
     gzip_types text/plain text/css application/javascript application/json;
 }
 ```
@@ -195,181 +163,122 @@ server {
 Aktivieren:
 
 ```bash
-ln -s /etc/nginx/sites-available/visitor-mgmt /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/visitorplus.luwilab.work /etc/nginx/sites-enabled/
 nginx -t
 systemctl reload nginx
 ```
 
 ---
 
-## 6. SSL-Zertifikat einrichten
+## 6. SSL-Zertifikat (Cloudflare Origin Cert)
 
-### Option A — Cloudflare Origin Certificate (empfohlen)
+Da die Domain über Cloudflare proxied wird, reicht ein selbst-signiertes Zertifikat für die Origin-Verbindung (Cloudflare → Server). Der Browser sieht das Cloudflare-Zertifikat.
 
-1. Cloudflare Dashboard → SSL/TLS → Origin Server → Create Certificate
-2. Zertifikat und Key kopieren:
+### Option A — Selbst-signiert (schnell, 10 Jahre gültig)
 
 ```bash
-mkdir -p /etc/ssl/visitor-mgmt
-nano /etc/ssl/visitor-mgmt/cert.pem   # Zertifikat einfügen
-nano /etc/ssl/visitor-mgmt/key.pem    # Private Key einfügen
-chmod 600 /etc/ssl/visitor-mgmt/key.pem
+mkdir -p /etc/ssl/visitorplus
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -days 3650 -nodes \
+  -out /etc/ssl/visitorplus/cert.pem \
+  -keyout /etc/ssl/visitorplus/key.pem \
+  -subj "/CN=visitorplus.luwilab.work/O=LuwiLab/C=DE"
+chmod 600 /etc/ssl/visitorplus/key.pem
 ```
 
-3. Cloudflare SSL-Modus: **Full (Strict)**
+### Option B — Cloudflare Origin Certificate (empfohlen für Full Strict)
 
-### Option B — Let's Encrypt (ohne Cloudflare Proxy)
+1. Cloudflare Dashboard → SSL/TLS → Origin Server → Create Certificate
+2. Zertifikat und Key einfügen:
 
 ```bash
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d deine-domain.de
+mkdir -p /etc/ssl/visitorplus
+nano /etc/ssl/visitorplus/cert.pem   # Origin Certificate einfügen
+nano /etc/ssl/visitorplus/key.pem    # Private Key einfügen
+chmod 600 /etc/ssl/visitorplus/key.pem
 ```
 
 ---
 
 ## 7. Backend mit pm2 starten
 
-Das Produktivsystem verwaltet das Backend mit **pm2** (Prozessname `visitor-mgmt`).
-
 ```bash
-# pm2 global installieren (falls noch nicht vorhanden)
-npm install -g pm2
-
-cd /opt/visitor-mgmt/backend
-pm2 start src/index.js --name visitor-mgmt --cwd /opt/visitor-mgmt/backend
-pm2 save                  # Prozessliste persistieren
-pm2 startup               # einmalig: pm2 nach Reboot automatisch starten (Anweisung ausführen)
+cd /opt/visitor-mgmt-abatplus/backend
+pm2 start src/index.js --name visitor-mgmt --cwd /opt/visitor-mgmt-abatplus/backend
+pm2 save      # Prozessliste speichern
+pm2 startup   # Auto-Start nach Reboot konfigurieren (Anweisung ausführen)
 ```
 
-Alltagsbefehle:
+Status prüfen:
 
 ```bash
-pm2 restart visitor-mgmt  # nach jedem git pull
-pm2 logs visitor-mgmt     # Live-Logs
-pm2 list                  # Status aller Prozesse
+pm2 list
+pm2 logs visitor-mgmt
 ```
-
-> **Wichtig:** Nach `git pull` immer `pm2 restart visitor-mgmt`. Läuft der Prozess nicht, antwortet
-> Nginx auf `/api` nicht und das Frontend meldet generisch „Anmeldung fehlgeschlagen" — das ist dann
-> **kein** Passwortproblem, sondern ein nicht laufendes Backend.
->
-> **SMTP-Einstellungen** müssen **nicht** per Neustart übernommen werden — sie lassen sich direkt im
-> Admin-Panel unter **Einstellungen → E-Mail** (nur Superadmin) ändern und wirken sofort. Die `.env`
-> dient nur als initialer Fallback.
 
 ---
 
 ## 8. Erster Start & Test
 
 ```bash
-# Backend-Status prüfen
-pm2 list
-
-# Live-Logs ansehen
-pm2 logs visitor-mgmt
-
-# API direkt testen
+# API-Gesundheitscheck
 curl http://localhost:3001/api/health
 
 # Login testen
 curl -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@abat.de","password":"<passwort>"}'
+  -d '{"email":"admin@example.com","password":"ChangeMe123!"}'
 ```
 
-Standard-Login nach erstem Start:
+Standard-Login:
 
 | E-Mail | Passwort | Rolle |
 |---|---|---|
-| `admin@example.com` | `ChangeMe123!` | superadmin |
+| `admin@example.com` | `ChangeMe123!` | admin |
 
-Eigene Zugangsdaten beim ersten Start setzen: `ADMIN_EMAIL` und `ADMIN_PASSWORD` in der `.env` eintragen **bevor** das Backend das erste Mal gestartet wird.
-
-> Passwort sofort nach dem ersten Login unter **Einstellungen → Passwort ändern** ändern.
-
----
-
-## 8a. Zugangsdaten zurücksetzen
-
-Falls der Login nicht funktioniert oder Passwörter vergessen wurden, können sie direkt per SQLite zurückgesetzt werden — kein Serverneustart nötig.
-
-### Vorhandene Benutzer anzeigen
-
-```bash
-sqlite3 /opt/visitor-mgmt/backend/data/visitors.db \
-  "SELECT id, name, email, role, active FROM users;"
-```
-
-### Passwort eines einzelnen Accounts zurücksetzen
-
-```bash
-cd /opt/visitor-mgmt/backend
-
-# Passwort und E-Mail anpassen:
-NEUES_PW="DeinNeuesPasswort123!"
-EMAIL="admin@example.com"   # E-Mail des Accounts anpassen
-
-HASH=$(node -e "const b=require('./node_modules/bcryptjs'); b.hash('$NEUES_PW',12).then(h=>process.stdout.write(h))")
-sqlite3 /opt/visitor-mgmt/backend/data/visitors.db "UPDATE users SET password_hash='$HASH' WHERE email='$EMAIL';"
-```
-
-> Den **absoluten** DB-Pfad verwenden (muss mit `DB_PATH` aus der `.env` übereinstimmen), sonst wird
-> evtl. eine andere/leere DB bearbeitet als die, die das laufende Backend nutzt.
-
-### Passwort aller Accounts auf einmal zurücksetzen
-
-```bash
-cd /opt/visitor-mgmt/backend
-
-NEUES_PW="DeinNeuesPasswort123!"
-HASH=$(node -e "const b=require('./node_modules/bcryptjs'); b.hash('$NEUES_PW',12).then(h=>process.stdout.write(h))")
-sqlite3 /opt/visitor-mgmt/backend/data/visitors.db "UPDATE users SET password_hash='$HASH';"
-```
-
-Danach mit der jeweiligen E-Mail-Adresse und dem neuen Passwort einloggen. Passwort anschließend unter **Einstellungen → Passwort ändern** personalisieren.
+> Passwort sofort nach erstem Login unter **Einstellungen → Passwort** ändern.
 
 ---
 
 ## 9. Cloudflare konfigurieren
 
-1. DNS-Eintrag: `A deine-domain.de → Server-IP` (Proxy aktiviert = orange Wolke)
-2. SSL/TLS-Modus: **Full (Strict)**
-3. Empfohlen: Automatic HTTPS Rewrites aktivieren
+1. DNS: `A visitorplus.luwilab.work → <Server-IP>` (Proxy: orange Wolke ✓)
+2. SSL/TLS-Modus: **Full** (oder Full Strict mit Cloudflare Origin Cert)
+3. Automatic HTTPS Rewrites: aktivieren
 
 ---
 
-## Updates einspielen
+## 10. Updates einspielen
 
 ```bash
-cd /opt/visitor-mgmt
+cd /opt/visitor-mgmt-abatplus
 git pull
 
-# Backend (falls package.json geändert)
+# Backend-Abhängigkeiten aktualisieren (falls package.json geändert)
 cd backend && npm install
 
 # Frontend neu bauen
-cd /opt/visitor-mgmt/frontend
-npm run build
+cd /opt/visitor-mgmt-abatplus/frontend && npm run build
 
 # Backend neu starten
 pm2 restart visitor-mgmt
 ```
 
-> Nach jedem Update unbedingt `pm2 restart visitor-mgmt` — ohne Neustart läuft weiter der alte Code.
-
 ---
 
-## Datenbank-Backup
+## 11. Datenbank-Backup
+
+Manuell:
 
 ```bash
-sqlite3 /opt/visitor-mgmt/backend/data/visitors.db \
-  ".backup /root/backup-$(date +%Y%m%d).db"
+sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db \
+  ".backup /root/backups/visitors-$(date +%Y%m%d).db"
 ```
 
-Tägliches automatisches Backup per Cron:
+Automatisch per Cron (täglich 03:00):
 
 ```bash
+mkdir -p /root/backups
 crontab -e
-# Täglich um 03:00 Uhr
-0 3 * * * sqlite3 /opt/visitor-mgmt/backend/data/visitors.db ".backup /root/backups/visitors-$(date +\%Y\%m\%d).db"
+# Eintragen:
+0 3 * * * sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db ".backup /root/backups/visitors-$(date +\%Y\%m\%d).db"
 ```

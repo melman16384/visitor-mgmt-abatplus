@@ -20,7 +20,7 @@ client.interceptors.response.use(
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       const path = window.location.pathname;
-      if (!path.startsWith('/kiosk') && path !== '/login') {
+      if (path !== '/login') {
         window.location.href = '/login';
       }
     }

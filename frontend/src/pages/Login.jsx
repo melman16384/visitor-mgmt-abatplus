@@ -1,209 +1,154 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTranslation } from 'react-i18next';
-import api from '../api/client';
+
+function MicrosoftIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 21 21" fill="none">
+      <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+      <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+      <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+    </svg>
+  );
+}
 
 export default function Login() {
-  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showDemoCredentials, setShowDemoCredentials] = useState(true);
-
-  // 2FA state
-  const [step, setStep] = useState('credentials'); // 'credentials' | '2fa'
-  const [partialToken, setPartialToken] = useState('');
-  const [totpCode, setTotpCode] = useState('');
-
+  const [showLocal, setShowLocal] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
 
-  useEffect(() => {
-    api.get('/settings/privacy-policy').then(r => {
-      setShowDemoCredentials(r.data.show_demo_credentials !== false);
-    }).catch(() => {});
-  }, []);
+  const ssoError = params.get('error');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/auth/login', { email, password });
-      if (res.data.requires_2fa) {
-        setPartialToken(res.data.partial_token);
-        setStep('2fa');
-      } else {
-        await login(email, password);
-        navigate('/dashboard');
-      }
+      await login(email, password);
+      navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || t('login.error'));
+      setError(err.response?.data?.error || 'Anmeldung fehlgeschlagen');
     } finally {
       setLoading(false);
     }
   };
 
-  const handle2FA = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      const res = await api.post('/auth/2fa/verify', { partial_token: partialToken, code: totpCode });
-      // Manually store token and set auth state
-      localStorage.setItem('token', res.data.token);
-      window.location.href = '/dashboard';
-    } catch (err) {
-      setError(err.response?.data?.error || 'Ungültiger Code');
-      setLoading(false);
-    }
+  const handleMicrosoft = () => {
+    window.location.href = '/api/auth/microsoft';
   };
 
   return (
     <div className="min-h-screen bg-abat-dunkelgrau flex items-center justify-center p-4">
-      {/* Background pattern */}
       <div className="absolute inset-0 opacity-5" style={{
         backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
         backgroundSize: '40px 40px'
       }} />
 
-      <div className="relative w-full max-w-xl">
-        {/* Card */}
-        <div className="kiosk-fade-up bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
+      <div className="relative w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-abat-dunkelgrau px-8 py-8 text-center">
-            <img src="/logo-light.png" alt="abat AG" className="kiosk-pop-in h-14 mx-auto mb-4" />
-            <h1 className="kiosk-fade-up kiosk-delay-1 text-2xl font-bold text-white">{t('login.title')}</h1>
-            <p className="kiosk-fade-up kiosk-delay-2 text-abat-hellgrau text-sm mt-1">{t('login.subtitle')}</p>
+            <img src="/logo-light.png" alt="abat AG" className="h-14 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-white">Besucherverwaltung</h1>
+            <p className="text-abat-hellgrau text-sm mt-1">abat+ Eingangsregistrierung</p>
           </div>
 
-          {/* 2FA Step */}
-          {step === '2fa' ? (
-            <form onSubmit={handle2FA} className="px-8 py-8 space-y-5">
-              <div className="flex flex-col items-center text-center gap-2 pb-2">
-                <div className="w-14 h-14 rounded-full bg-abat-lichtblau/20 flex items-center justify-center mb-1">
-                  <ShieldCheck size={28} className="text-abat-blau" />
-                </div>
-                <h2 className="text-lg font-bold text-abat-dunkelgrau">Zwei-Faktor-Authentifizierung</h2>
-                <p className="text-sm text-abat-grau">Bitte geben Sie den 6-stelligen Code aus Ihrer Authenticator-App ein.</p>
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
-                  <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">Authentifizierungs-Code</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={totpCode}
-                  onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full px-4 py-4 border-2 border-abat-hellgrau rounded-xl focus:outline-none focus:border-abat-blau text-2xl font-mono tracking-[0.4em] text-center transition-all"
-                  placeholder="000000"
-                  autoFocus
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || totpCode.length !== 6}
-                className="w-full bg-abat-blau hover:bg-primary-600 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl transition-colors shadow-md text-sm active:scale-[0.98]">
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Wird geprüft…
-                  </span>
-                ) : 'Bestätigen'}
-              </button>
-              <button type="button" onClick={() => { setStep('credentials'); setError(''); setTotpCode(''); }}
-                className="w-full text-sm text-abat-grau hover:text-abat-dunkelgrau transition-colors py-1">
-                ← Zurück zur Anmeldung
-              </button>
-            </form>
-          ) : (
-
-          /* Form */
-          <form onSubmit={handleSubmit} className="px-8 py-8 space-y-5">
-            {error && (
-              <div className="kiosk-fade-up flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
+          <div className="px-8 py-8 space-y-4">
+            {(error || ssoError) && (
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
                 <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <span>{error || ssoError}</span>
               </div>
             )}
 
-            <div className="kiosk-fade-up kiosk-delay-2">
-              <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">{t('login.email')}</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-abat-hellgrau rounded-xl focus:outline-none focus:border-abat-blau text-sm transition-all"
-                placeholder="name@firma.de"
-                required
-                autoComplete="email"
-              />
+            {/* Primary: Microsoft SSO */}
+            <button
+              onClick={handleMicrosoft}
+              className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-3 px-4 rounded-xl transition-colors shadow-sm text-sm"
+            >
+              <MicrosoftIcon />
+              Mit Microsoft-Konto anmelden
+            </button>
+
+            {/* Divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs text-gray-400">oder</span>
+              <div className="flex-1 h-px bg-gray-200" />
             </div>
 
-            <div className="kiosk-fade-up kiosk-delay-3">
-              <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">{t('login.password')}</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-abat-hellgrau rounded-xl focus:outline-none focus:border-abat-blau text-sm pr-12 transition-all"
-                  placeholder="••••••••"
-                  required
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(s => !s)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="kiosk-fade-up kiosk-delay-4">
+            {/* Local login (admin fallback) */}
+            {!showLocal ? (
               <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-abat-blau hover:bg-primary-600 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl transition-colors shadow-md hover:shadow-lg text-sm active:scale-[0.98]"
+                onClick={() => setShowLocal(true)}
+                className="w-full text-sm text-gray-400 hover:text-gray-600 transition-colors py-1"
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    {t('login.loggingIn')}
-                  </span>
-                ) : t('login.submit')}
+                Mit E-Mail & Passwort anmelden
               </button>
-            </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">E-Mail</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-abat-hellgrau rounded-xl focus:outline-none focus:border-abat-blau text-sm transition-all"
+                    placeholder="name@abat.de"
+                    required
+                    autoComplete="email"
+                    autoFocus
+                  />
+                </div>
 
-            {/* Demo credentials */}
-            {showDemoCredentials && (
-              <div className="kiosk-fade-up kiosk-delay-5 bg-gray-50 rounded-xl p-4 text-xs text-gray-500 border border-gray-100">
-                <p className="font-semibold text-gray-600 mb-2">Demo-Zugangsdaten:</p>
-                <p>Admin: <span className="font-mono text-gray-700">admin@firma.de</span> / <span className="font-mono text-gray-700">Admin123!</span></p>
-                <p>Empfang: <span className="font-mono text-gray-700">empfang@firma.de</span> / <span className="font-mono text-gray-700">Empfang123!</span></p>
-              </div>
+                <div>
+                  <label className="block text-sm font-semibold text-abat-dunkelgrau mb-2">Passwort</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-abat-hellgrau rounded-xl focus:outline-none focus:border-abat-blau text-sm pr-12 transition-all"
+                      placeholder="••••••••"
+                      required
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(s => !s)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-abat-blau hover:bg-primary-600 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl transition-colors shadow-md text-sm"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Wird angemeldet…
+                    </span>
+                  ) : 'Anmelden'}
+                </button>
+              </form>
             )}
-          </form>
-          )}
+          </div>
         </div>
 
-        <p className="kiosk-fade-up kiosk-delay-5 text-center text-abat-hellgrau text-xs mt-6">
-          © 2025 abat AG Besucherverwaltung
+        <p className="text-center text-abat-hellgrau text-xs mt-6">
+          © {new Date().getFullYear()} abat AG · Besucherverwaltung
         </p>
       </div>
     </div>

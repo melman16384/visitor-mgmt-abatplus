@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { LogOut, Monitor, Users } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../context/AuthContext';
-import { useTranslation } from 'react-i18next';
 
 function Toast({ toasts }) {
   return (
@@ -18,7 +17,6 @@ function Toast({ toasts }) {
   );
 }
 
-// Global toast state (simple singleton)
 let toastListeners = [];
 let toastId = 0;
 
@@ -34,7 +32,6 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [toasts, setToasts] = useState([]);
-  const { t } = useTranslation();
 
   React.useEffect(() => {
     toastListeners.push(setToasts);
@@ -46,58 +43,32 @@ export default function Layout() {
     navigate('/login');
   };
 
-  const getRoleLabel = (role) => {
-    return t(`roles.${role}`, { defaultValue: role });
-  };
+  const roleLabel = user?.role === 'admin' ? 'Administrator' : 'Benutzer';
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top bar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <a
-              href="/kiosk"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600 transition-colors px-3 py-1.5 rounded-lg hover:bg-primary-50"
-            >
-              <Monitor size={16} />
-              <span>{t('layout.openKiosk')}</span>
-            </a>
-            <a
-              href="/host"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600 transition-colors px-3 py-1.5 rounded-lg hover:bg-primary-50"
-            >
-              <Users size={16} />
-              <span>{t('layout.hostPortal')}</span>
-            </a>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
-              <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                {user?.name?.charAt(0).toUpperCase()}
-              </div>
-              <div className="hidden sm:block">
-                <p className="text-sm font-semibold text-gray-800 leading-tight">{user?.name}</p>
-                <p className="text-xs text-gray-400">{getRoleLabel(user?.role)}</p>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                title={t('layout.logout')}
-              >
-                <LogOut size={18} />
-              </button>
+        <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center justify-end flex-shrink-0">
+          <div className="flex items-center gap-3 pl-3">
+            <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+              {user?.name?.charAt(0).toUpperCase()}
             </div>
+            <div className="hidden sm:block">
+              <p className="text-sm font-semibold text-gray-800 leading-tight">{user?.name}</p>
+              <p className="text-xs text-gray-400">{roleLabel}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+              title="Abmelden"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>

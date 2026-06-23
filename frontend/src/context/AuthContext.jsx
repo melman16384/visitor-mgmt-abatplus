@@ -22,6 +22,22 @@ export function AuthProvider({ children }) {
     return newUser;
   }, []);
 
+  const loginWithToken = useCallback(async (newToken) => {
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
+    try {
+      const res = await client.get('/auth/me', {
+        headers: { Authorization: `Bearer ${newToken}` },
+      });
+      const newUser = res.data.user;
+      localStorage.setItem('user', JSON.stringify(newUser));
+      setUser(newUser);
+    } catch {
+      localStorage.removeItem('token');
+      setToken(null);
+    }
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -32,7 +48,7 @@ export function AuthProvider({ children }) {
   const isAuthenticated = !!token && !!user;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, token, login, loginWithToken, logout, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   );
