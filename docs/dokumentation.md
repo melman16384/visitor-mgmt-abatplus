@@ -904,6 +904,24 @@ nginx -t   # Immer zuerst testen — zeigt Syntax-Fehler
 systemctl reload nginx
 ```
 
+### `npm install` schlägt fehl — better-sqlite3 / node-gyp
+
+**Fehler `not found: make`** → Build-Tools fehlen:
+```bash
+apt install -y build-essential
+```
+
+**Fehler `unable to verify the first certificate`** → SSL-Zertifikat nicht verifizierbar (z.B. Corporate Proxy):
+```bash
+NODE_OPTIONS=--use-system-ca npm install
+```
+
+Beide Fixes kombinieren falls nötig:
+```bash
+apt install -y build-essential
+NODE_OPTIONS=--use-system-ca npm install
+```
+
 ### Datenbank beschädigt / gesperrt
 ```bash
 sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db "PRAGMA integrity_check;"

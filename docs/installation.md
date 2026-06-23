@@ -55,6 +55,9 @@ apt install -y nginx
 # sqlite3 CLI installieren (für Wartungsaufgaben)
 apt install -y sqlite3
 
+# Build-Tools installieren (benötigt für native Node-Module wie better-sqlite3)
+apt install -y build-essential
+
 # Versionen prüfen
 node -v    # Sollte v22.x oder höher anzeigen
 npm -v
@@ -77,11 +80,11 @@ git clone https://github.com/melman16384/visitor-mgmt-abatplus.git /opt/visitor-
 
 # Abhängigkeiten installieren — Backend
 cd /opt/visitor-mgmt-abatplus/backend
-npm install
+NODE_OPTIONS=--use-system-ca npm install
 
 # Abhängigkeiten installieren — Frontend
 cd /opt/visitor-mgmt-abatplus/frontend
-npm install
+NODE_OPTIONS=--use-system-ca npm install
 ```
 
 ---
