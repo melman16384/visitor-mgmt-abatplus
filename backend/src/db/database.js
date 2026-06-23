@@ -88,6 +88,7 @@ initializeDatabase();
 const settingDefaults = {
   auto_checkout_enabled: 'true',
   auto_checkout_time: '20:00',
+  data_retention_days: '365',
 };
 const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
 Object.entries(settingDefaults).forEach(([k, v]) => insertSetting.run(k, v));

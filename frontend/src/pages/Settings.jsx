@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings2, Users, Key, UserCheck, Plus, Trash2, Pencil, X, Eye, EyeOff } from 'lucide-react';
+import { Settings2, Users, Key, Plus, Trash2, Pencil, X, Eye, EyeOff, DatabaseZap } from 'lucide-react';
 import api from '../api/client';
 import { showToast } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -254,6 +254,109 @@ function UsersTab() {
   );
 }
 
+// ---- Data Retention Tab ----
+function DataRetentionTab() {
+  const [days, setDays] = useState('365');
+  const [custom, setCustom] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get('/settings').then(r => {
+      const val = r.data.data_retention_days || '365';
+      const presets = ['30', '60', '90', '180', '365', '0'];
+      if (presets.includes(val)) {
+        setDays(val);
+        setCustom(false);
+      } else {
+        setDays(val);
+        setCustom(true);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const save = async () => {
+    const val = parseInt(days, 10);
+    if (isNaN(val) || val < 0) { showToast('Ungültiger Wert', 'error'); return; }
+    setSaving(true);
+    try {
+      await api.put('/settings', { data_retention_days: String(val) });
+      showToast('Einstellungen gespeichert');
+    } catch {
+      showToast('Fehler beim Speichern', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const presets = [
+    { label: '30 Tage', value: '30' },
+    { label: '60 Tage', value: '60' },
+    { label: '90 Tage', value: '90' },
+    { label: '180 Tage', value: '180' },
+    { label: '1 Jahr', value: '365' },
+    { label: 'Benutzerdefiniert', value: 'custom' },
+    { label: 'Deaktiviert', value: '0' },
+  ];
+
+  const handlePreset = (val) => {
+    if (val === 'custom') { setCustom(true); return; }
+    setCustom(false);
+    setDays(val);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
+        <div>
+          <h3 className="font-semibold text-gray-800">Datenspeicherung</h3>
+          <p className="text-xs text-gray-400 mt-1">Abgeschlossene Besuche und Vorregistrierungen werden nach Ablauf der Frist automatisch gelöscht. Aktive Besuche und ausstehende Vorregistrierungen bleiben immer erhalten.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">Aufbewahrungsdauer</label>
+          <div className="flex flex-wrap gap-2">
+            {presets.map(p => (
+              <button
+                key={p.value}
+                onClick={() => handlePreset(p.value)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors duration-150 ease-in-out ${
+                  (p.value === 'custom' ? custom : !custom && days === p.value)
+                    ? 'bg-abat-blau text-white border-abat-blau'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-abat-blau hover:text-abat-blau'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {custom && (
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Anzahl Tage</label>
+            <input
+              type="number"
+              min="1"
+              value={days}
+              onChange={e => setDays(e.target.value)}
+              className={inp}
+              placeholder="z.B. 730"
+            />
+          </div>
+        )}
+
+        {days === '0' && !custom && (
+          <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Datenlöschung deaktiviert — Besuchsdaten werden unbegrenzt gespeichert.</p>
+        )}
+
+        <button onClick={save} disabled={saving} className="w-full py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors duration-150">
+          {saving ? 'Speichern…' : 'Einstellungen speichern'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Main Settings ----
 export default function Settings() {
   const { user } = useAuth();
@@ -262,6 +365,7 @@ export default function Settings() {
 
   const tabs = [
     ...(isAdmin ? [{ key: 'checkout', label: 'Auto-Checkout', icon: Settings2 }] : []),
+    ...(isAdmin ? [{ key: 'retention', label: 'Datenspeicherung', icon: DatabaseZap }] : []),
     { key: 'password', label: 'Passwort', icon: Key },
     ...(isAdmin ? [{ key: 'users', label: 'Benutzer', icon: Users }] : []),
   ];
@@ -289,6 +393,7 @@ export default function Settings() {
 
       <div className="max-w-2xl">
         {tab === 'checkout' && isAdmin && <AutoCheckoutTab />}
+        {tab === 'retention' && isAdmin && <DataRetentionTab />}
         {tab === 'password' && <PasswordTab />}
         {tab === 'users' && isAdmin && <UsersTab />}
       </div>

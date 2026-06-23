@@ -63,9 +63,11 @@ require('./db/database');
 auditCleanup();
 
 const { scheduleNext } = require('./services/auto-checkout');
+const { scheduleRetention } = require('./services/data-retention');
 app.listen(PORT, () => {
   console.log(`✓ Besucherverwaltung Backend läuft auf Port ${PORT}`);
   scheduleNext();
+  scheduleRetention();
 });
 
 module.exports = app;
