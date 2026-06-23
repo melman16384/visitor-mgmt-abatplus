@@ -59,8 +59,13 @@ router.get('/callback', async (req, res) => {
       redirectUri: REDIRECT_URI,
     });
 
-    const msEmail = (result.account.username || result.idTokenClaims?.preferred_username || '').toLowerCase();
-    const msName = result.idTokenClaims?.name || result.account.name || msEmail.split('@')[0];
+    const graphRes = await fetch('https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName', {
+      headers: { Authorization: `Bearer ${result.accessToken}` },
+    });
+    const graphUser = await graphRes.json();
+
+    const msEmail = (graphUser.mail || graphUser.userPrincipalName || result.account.username || '').toLowerCase();
+    const msName = graphUser.displayName || result.idTokenClaims?.name || result.account.name || msEmail.split('@')[0];
 
     if (!msEmail) {
       return res.redirect(`${APP_URL}/login?error=no_email`);
