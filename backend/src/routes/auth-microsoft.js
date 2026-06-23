@@ -59,8 +59,8 @@ router.get('/callback', async (req, res) => {
       redirectUri: REDIRECT_URI,
     });
 
-    const msEmail = (result.account.username || '').toLowerCase();
-    const msName = result.account.name || msEmail.split('@')[0];
+    const msEmail = (result.account.username || result.idTokenClaims?.preferred_username || '').toLowerCase();
+    const msName = result.idTokenClaims?.name || result.account.name || msEmail.split('@')[0];
 
     if (!msEmail) {
       return res.redirect(`${APP_URL}/login?error=no_email`);
