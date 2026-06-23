@@ -27,14 +27,14 @@ router.get('/', authenticate, (req, res) => {
 // POST / - create preregistration
 router.post('/', authenticate, (req, res) => {
   const { visitor_first_name, visitor_last_name, visitor_company, host_id, expected_date, expected_time, notes } = req.body;
-  if (!visitor_first_name || !visitor_last_name || !expected_date) {
-    return res.status(400).json({ error: 'Name und Datum erforderlich' });
+  if (!visitor_first_name || !visitor_last_name) {
+    return res.status(400).json({ error: 'Vor- und Nachname erforderlich' });
   }
 
   const result = db.prepare(`
     INSERT INTO preregistrations (visitor_first_name, visitor_last_name, visitor_company, host_id, expected_date, expected_time, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(visitor_first_name, visitor_last_name, visitor_company || null, host_id || null, expected_date, expected_time || null, notes || null);
+  `).run(visitor_first_name, visitor_last_name, visitor_company || null, host_id || null, expected_date || null, expected_time || null, notes || null);
 
   const prereg = db.prepare(`${SELECT} WHERE p.id = ?`).get(result.lastInsertRowid);
   try { log('VORREGISTRIERUNG', req.user.name, `${visitor_first_name} ${visitor_last_name}`); } catch {}

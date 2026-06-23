@@ -231,13 +231,13 @@ export default function PreRegistration() {
                 {hosts.map(h => <option key={h.id} value={h.id}>{h.name}{h.email ? ` – ${h.email}` : ''}</option>)}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Datum *</label>
-                <input type="date" value={form.expected_date} onChange={e => setForm(f => ({ ...f, expected_date: e.target.value }))} required className={inp} />
+            <div>
+              <div className="flex items-baseline justify-between mb-1">
+                <label className="text-xs font-semibold text-gray-700">Datum & Uhrzeit</label>
+                <span className="text-[10px] text-gray-400">optional · Check-in-Zeit wird automatisch erfasst</span>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Uhrzeit</label>
+              <div className="grid grid-cols-2 gap-3">
+                <input type="date" value={form.expected_date} onChange={e => setForm(f => ({ ...f, expected_date: e.target.value }))} className={inp} />
                 <input type="time" value={form.expected_time} onChange={e => setForm(f => ({ ...f, expected_time: e.target.value }))} className={inp} />
               </div>
             </div>
