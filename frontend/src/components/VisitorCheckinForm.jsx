@@ -46,7 +46,7 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
          onClick={e => e.target === e.currentTarget && onClose()}>
 
       {/* Sheet / Modal */}
-      <div className="bg-white w-full md:max-w-md md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92dvh] md:max-h-[90vh]">
+      <div className="bg-white w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[92dvh] md:max-h-[90vh]">
 
         {/* Handle bar — mobile only */}
         <div className="flex justify-center pt-3 pb-1 md:hidden">
