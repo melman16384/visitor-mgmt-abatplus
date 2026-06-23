@@ -61,9 +61,9 @@ function AutoCheckoutTab() {
             aria-checked={enabled}
             tabIndex={0}
             onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && setEnabled(v => !v)}
-            className={`relative flex-shrink-0 w-12 h-6 rounded-full cursor-pointer transition-colors ${enabled ? 'bg-abat-blau' : 'bg-gray-300'}`}
+            className={`relative flex-shrink-0 w-12 h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${enabled ? 'bg-abat-blau' : 'bg-gray-300'}`}
           >
-            <span className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            <span className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ease-in-out ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
           </div>
         </div>
         <div>
@@ -279,7 +279,7 @@ export default function Settings() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? 'bg-white text-abat-blau shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150 ease-in-out ${tab === key ? 'bg-white text-abat-blau shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
             <Icon size={15} />
             {label}

@@ -60,7 +60,7 @@ export default function Dashboard() {
         </div>
         <button
           onClick={() => setShowCheckin(true)}
-          className="flex items-center gap-2 bg-abat-blau hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors"
+          className="flex items-center gap-2 bg-abat-blau hover:bg-primary-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-colors duration-150 ease-in-out"
         >
           <UserPlus size={18} />
           Besucher einchecken

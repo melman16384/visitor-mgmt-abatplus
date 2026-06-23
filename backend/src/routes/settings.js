@@ -5,14 +5,15 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const router = express.Router();
 const adminOnly = [authenticate, requireRole(['admin'])];
 
-// GET /system
-router.get('/system', ...adminOnly, (req, res) => {
+const getSettings = (req, res) => {
   const rows = db.prepare('SELECT key, value FROM system_settings').all();
   res.json(Object.fromEntries(rows.map(r => [r.key, r.value])));
-});
+};
 
-// PUT /system
-router.put('/system', ...adminOnly, (req, res) => {
+router.get('/', ...adminOnly, getSettings);
+router.get('/system', ...adminOnly, getSettings);
+
+const putSettings = (req, res) => {
   const allowed = ['auto_checkout_enabled', 'auto_checkout_time'];
   const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
   const tx = db.transaction((updates) => {
@@ -23,6 +24,9 @@ router.put('/system', ...adminOnly, (req, res) => {
   tx(req.body);
   const rows = db.prepare('SELECT key, value FROM system_settings').all();
   res.json(Object.fromEntries(rows.map(r => [r.key, r.value])));
-});
+};
+
+router.put('/', ...adminOnly, putSettings);
+router.put('/system', ...adminOnly, putSettings);
 
 module.exports = router;

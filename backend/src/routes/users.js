@@ -8,7 +8,7 @@ const adminOnly = [authenticate, requireRole(['admin'])];
 
 // GET /
 router.get('/', ...adminOnly, (req, res) => {
-  const rows = db.prepare('SELECT id, name, email, role, active, created_at FROM users ORDER BY name ASC').all();
+  const rows = db.prepare('SELECT id, name, email, role, active, created_at FROM users WHERE active = 1 ORDER BY name ASC').all();
   res.json(rows);
 });
 
@@ -51,11 +51,17 @@ router.post('/:id/reset-password', ...adminOnly, async (req, res) => {
   res.json({ message: 'Passwort zurückgesetzt' });
 });
 
-// DELETE /:id (deactivate)
+// DELETE /:id
 router.delete('/:id', ...adminOnly, (req, res) => {
-  if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Eigenes Konto kann nicht deaktiviert werden' });
-  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(req.params.id);
-  res.json({ message: 'Benutzer deaktiviert' });
+  const id = parseInt(req.params.id);
+  if (id === req.user.id) return res.status(400).json({ error: 'Eigenes Konto kann nicht gelöscht werden' });
+  const inUse = db.prepare('SELECT 1 FROM visits WHERE checked_in_by = ? LIMIT 1').get(id);
+  if (inUse) {
+    db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+  } else {
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  }
+  res.json({ message: 'Benutzer gelöscht' });
 });
 
 module.exports = router;
