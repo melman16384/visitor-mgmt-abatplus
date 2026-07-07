@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import abatLogo from '../assets/abat-logo.png';
 
 function MicrosoftIcon() {
   return (
@@ -55,8 +56,8 @@ export default function Login() {
       <div className="relative w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-abat-dunkelgrau px-8 py-8 text-center">
-            <p className="text-5xl font-bold text-white tracking-tight mb-3">abat<span className="text-abat-hellblau">+</span></p>
-            <h1 className="text-xl font-bold text-white">Besucherverwaltung</h1>
+            <img src={abatLogo} alt="abat AG" className="h-10 mx-auto mb-4" />
+            <h1 className="text-xl font-bold text-white">abat<span className="text-abat-hellblau">+</span> Besucherverwaltung</h1>
             <p className="text-abat-hellgrau text-sm mt-1">Eingangsregistrierung</p>
           </div>
 

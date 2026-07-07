@@ -16,6 +16,49 @@ export default function HostAutocomplete({ value, onSelect, placeholder = 'Name 
   const timer = useRef(null);
   const wrapperRef = useRef(null);
 
+  // Alle Hooks müssen unabhängig vom manualMode-Zweig in derselben Reihenfolge
+  // aufgerufen werden (Rules of Hooks) — die Verzweigung erfolgt erst im Rückgabewert unten.
+  useEffect(() => {
+    const handler = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (manualMode) return;
+    if (timer.current) clearTimeout(timer.current);
+    if (query.trim().length < 3) {
+      setResults([]);
+      return;
+    }
+    timer.current = setTimeout(() => {
+      setLoading(true);
+      api.get(`/hosts/search-ad?q=${encodeURIComponent(query.trim())}`)
+        .then(r => { setResults(r.data); setNotConfigured(false); })
+        .catch(err => {
+          setResults([]);
+          if (err.response?.status === 503) setNotConfigured(true);
+        })
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timer.current);
+  }, [query, manualMode]);
+
+  const handleSelect = (user) => {
+    setQuery(user.name);
+    setOpen(false);
+    onSelect({ name: user.name, email: user.email, ad_object_id: user.id });
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    onSelect(null);
+  };
+
+  const inp = 'w-full pl-9 pr-8 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-abat-blau focus:ring-1 focus:ring-abat-blau bg-white';
+
   if (manualMode) {
     return (
       <div>
@@ -35,46 +78,6 @@ export default function HostAutocomplete({ value, onSelect, placeholder = 'Name 
       </div>
     );
   }
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    if (query.trim().length < 3) {
-      setResults([]);
-      return;
-    }
-    timer.current = setTimeout(() => {
-      setLoading(true);
-      api.get(`/hosts/search-ad?q=${encodeURIComponent(query.trim())}`)
-        .then(r => { setResults(r.data); setNotConfigured(false); })
-        .catch(err => {
-          setResults([]);
-          if (err.response?.status === 503) setNotConfigured(true);
-        })
-        .finally(() => setLoading(false));
-    }, 300);
-    return () => clearTimeout(timer.current);
-  }, [query]);
-
-  const handleSelect = (user) => {
-    setQuery(user.name);
-    setOpen(false);
-    onSelect({ name: user.name, email: user.email, ad_object_id: user.id });
-  };
-
-  const handleClear = () => {
-    setQuery('');
-    onSelect(null);
-  };
-
-  const inp = 'w-full pl-9 pr-8 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-abat-blau focus:ring-1 focus:ring-abat-blau bg-white';
 
   return (
     <div className="relative" ref={wrapperRef}>

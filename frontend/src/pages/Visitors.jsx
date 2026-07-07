@@ -84,10 +84,7 @@ function PreRegFormModal({ onClose, onSuccess }) {
           <HostAutocomplete value={host} onSelect={setHost} allowManual />
         </div>
         <div>
-          <div className="flex items-baseline justify-between mb-1">
-            <label className="text-xs font-semibold text-gray-700">Datum & Uhrzeit</label>
-            <span className="text-[10px] text-gray-400">optional · Check-in-Zeit wird automatisch erfasst</span>
-          </div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1">Datum & Uhrzeit</label>
           <div className="grid grid-cols-2 gap-3">
             <input type="date" value={form.expected_date} onChange={e => setForm(f => ({ ...f, expected_date: e.target.value }))} className={inp} />
             <input type="time" value={form.expected_time} onChange={e => setForm(f => ({ ...f, expected_time: e.target.value }))} className={inp} />
@@ -150,7 +147,7 @@ function CheckinPreregDialog({ row, onClose, onSuccess }) {
 
 export default function Visitors() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState('vorregistriert');
   const [visitors, setVisitors] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
