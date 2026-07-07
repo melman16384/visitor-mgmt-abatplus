@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import client from '../api/client';
 
 export default function AuthCallback() {
   const [params] = useSearchParams();
@@ -8,20 +9,29 @@ export default function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = params.get('token');
+    const code = params.get('code');
     const error = params.get('error');
 
-    if (token) {
-      loginWithToken(token);
-      navigate('/dashboard', { replace: true });
+    const fail = (msg) => navigate(`/login?error=${encodeURIComponent(msg)}`, { replace: true });
+
+    const messages = {
+      sso_failed: 'SSO-Anmeldung fehlgeschlagen.',
+      sso_cancelled: 'Anmeldung abgebrochen.',
+      sso_token_failed: 'Token-Fehler. Bitte erneut versuchen.',
+      no_email: 'Kein E-Mail-Konto gefunden.',
+      invalid_state: 'Sicherheitsprüfung fehlgeschlagen. Bitte erneut versuchen.',
+      domain_not_allowed: 'Diese E-Mail-Domain ist nicht zugelassen.',
+    };
+
+    if (code) {
+      client.post('/auth/microsoft/exchange', { code })
+        .then(({ data }) => {
+          loginWithToken(data.token);
+          navigate('/dashboard', { replace: true });
+        })
+        .catch(() => fail('Anmeldung fehlgeschlagen.'));
     } else {
-      const msg = {
-        sso_failed: 'SSO-Anmeldung fehlgeschlagen.',
-        sso_cancelled: 'Anmeldung abgebrochen.',
-        sso_token_failed: 'Token-Fehler. Bitte erneut versuchen.',
-        no_email: 'Kein E-Mail-Konto gefunden.',
-      }[error] || 'Anmeldung fehlgeschlagen.';
-      navigate(`/login?error=${encodeURIComponent(msg)}`, { replace: true });
+      fail(messages[error] || 'Anmeldung fehlgeschlagen.');
     }
   }, []);
 

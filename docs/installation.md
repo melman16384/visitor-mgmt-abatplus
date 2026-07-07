@@ -193,6 +193,21 @@ AZURE_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 > **Clientgeheimnis-Ablauf:** Das Geheimnis läuft nach dem gewählten Zeitraum ab. Bei Ablauf schlägt der Microsoft-Login fehl. Vor Ablauf ein neues Geheimnis erstellen und `.env` aktualisieren, dann `pm2 restart visitor-mgmt --update-env`.
 
+> **Erst nach Eintragen aller drei `AZURE_*`-Werte aktiv:** Solange `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` oder `AZURE_CLIENT_SECRET` leer sind, liefert `GET /api/auth/microsoft` einen `503`-Fehler (`„Microsoft SSO nicht konfiguriert"`). Der lokale Admin-Login bleibt in diesem Zustand die einzige Anmeldemöglichkeit. Erst wenn alle drei Werte gesetzt sind und das Backend neugestartet wurde, ist der SSO-Flow tatsächlich nutzbar.
+
+### Optional: Domain-Allowlist für Auto-Provisionierung
+
+Standardmäßig kann sich **jeder** Benutzer, der sich erfolgreich gegen den konfigurierten Azure-Tenant authentifiziert, per SSO einen neuen Account anlegen (Auto-Provisionierung beim ersten Login). Über die optionale Variable `SSO_ALLOWED_DOMAINS` kann das auf bestimmte E-Mail-Domains eingeschränkt werden:
+
+```env
+# Kommagetrennt, ohne @ — nur diese Domains dürfen sich neu registrieren
+SSO_ALLOWED_DOMAINS=abatplus.de,abat.de
+```
+
+Bereits bestehende Accounts können sich weiterhin unabhängig von dieser Einstellung anmelden — die Prüfung greift ausschließlich bei der Neuanlage. Ist die Variable nicht gesetzt, ändert sich nichts am bisherigen Verhalten.
+
+> **Empfehlung:** Sobald die Ziel-Domain(s) für den Produktivbetrieb feststehen, `SSO_ALLOWED_DOMAINS` setzen — das verhindert, dass sich versehentlich Konten aus fremden, im selben Azure-Tenant befindlichen Domains automatisch anlegen.
+
 ---
 
 ## 6. Frontend bauen
@@ -348,21 +363,35 @@ systemctl reload nginx
 
 ## 9. Backend mit pm2 starten
 
+> **Sicherheitshinweis:** In der Produktivumgebung läuft dieser Prozess **nicht als root**, sondern unter einem dedizierten, unprivilegierten Systembenutzer. Zusätzlich bindet Express in `backend/src/index.js` explizit an `127.0.0.1` (nicht `0.0.0.0`) — das Backend ist von außen nur über den Nginx-Reverse-Proxy erreichbar, nicht direkt über seinen eigenen Port. Diese beiden Punkte sollten bei jeder Neuinstallation übernommen werden:
+
+```bash
+# Dedizierten Systembenutzer ohne Login-Shell anlegen
+adduser --system --group --no-create-home svc-visitormgmtplus
+
+# Projektverzeichnis diesem Benutzer übertragen
+chown -R svc-visitormgmtplus:svc-visitormgmtplus /opt/visitor-mgmt-abatplus
+```
+
+Backend starten (entweder direkt als dieser Benutzer, oder über einen Eintrag mit `uid`/`gid` in einer zentralen `ecosystem.config.js`):
+
 ```bash
 # Backend starten
 cd /opt/visitor-mgmt-abatplus/backend
-pm2 start src/index.js \
+sudo -u svc-visitormgmtplus pm2 start src/index.js \
   --name visitor-mgmt \
   --cwd /opt/visitor-mgmt-abatplus/backend
 
 # Prozessliste für Neustarts speichern
-pm2 save
+sudo -u svc-visitormgmtplus pm2 save
 
 # Auto-Start nach Server-Reboot einrichten
 pm2 startup
-# Den angezeigten Befehl ausführen (sieht etwa so aus):
-# sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root
+# Den angezeigten Befehl ausführen — Benutzer entsprechend anpassen (nicht root):
+# sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u svc-visitormgmtplus --hp /home/svc-visitormgmtplus
 ```
+
+> Wird der Server mit mehreren Apps über eine gemeinsame `/opt/ecosystem.config.js` verwaltet, genügt pro App ein Eintrag mit `uid: 'svc-visitormgmtplus'` / `gid: 'svc-visitormgmtplus'` — pm2 startet den Prozess dann automatisch unter diesem Benutzer, ganz ohne `sudo -u`.
 
 Status prüfen:
 
@@ -417,6 +446,8 @@ Standard-Zugangsdaten:
 3. Konto in **Einstellungen → Benutzer** auf `admin` hochstufen
 4. Den `admin@example.com`-Account ggf. löschen oder deaktivieren
 
+> **Vor dem produktiven Go-Live prüfen:** Generisch benannte Accounts wie `admin@example.com` oder ein evtl. angelegter `user@example.com`-Test-Account sollten nicht unkommentiert stehen bleiben. Für jeden solchen Account entscheiden: umbenennen/mit echter Person verknüpfen, Passwortstärke verifizieren, oder deaktivieren — bevor der Zugang für den Regelbetrieb freigegeben wird.
+
 ---
 
 ## 12. Updates einspielen
@@ -444,31 +475,44 @@ pm2 restart visitor-mgmt
 
 ## 13. Automatisches Backup
 
-Tägliches Backup der SQLite-Datenbank per Cron:
+Das Projekt bringt ein eigenes Backup-Skript mit: `/opt/visitor-mgmt-abatplus/backup.sh`. Es sichert die SQLite-Datenbank per `.backup`-Kommando nach `/opt/visitor-mgmt-abatplus/backups/` und löscht dort Backups, die älter als 30 Tage sind.
 
 ```bash
-# Backup-Verzeichnis anlegen
-mkdir -p /root/backups
+#!/bin/bash
+BACKUP_DIR="/opt/visitor-mgmt-abatplus/backups"
+DB_PATH="/opt/visitor-mgmt-abatplus/backend/data/visitors.db"
+KEEP_DAYS=30
+DATE=$(date +%Y-%m-%d)
 
-# Crontab bearbeiten
-crontab -e
+mkdir -p "$BACKUP_DIR"
+sqlite3 "$DB_PATH" ".backup ${BACKUP_DIR}/visitors-${DATE}.db"
+find "$BACKUP_DIR" -name "visitors-*.db" -mtime +${KEEP_DAYS} -delete
 ```
 
-Folgende Zeile einfügen (täglich 03:00 Uhr):
+> **Bekannter, behobener Fehler:** In einer früheren Fassung verwies das Skript durch einen Copy-Paste-Fehler (vom Schwesterprojekt `visitor-mgmt`) auf `/opt/visitor-mgmt/backups` und `/opt/visitor-mgmt/backend/data/visitors.db` — also auf die **falsche** Datenbank. Beim Ausführen wäre dadurch nicht diese, sondern die Datenbank des anderen Projekts gesichert worden. Bei einer eigenständigen Installation unbedingt prüfen, dass `BACKUP_DIR` und `DB_PATH` im Skript auf das **eigene** Projektverzeichnis zeigen, bevor es eingeplant wird — besonders wenn das Skript von einer anderen Installation kopiert wurde.
 
-```
-0 3 * * * sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db ".backup /root/backups/visitors-$(date +\%Y\%m\%d).db"
-```
-
-Altes Backup aufräumen (Backups älter als 30 Tage löschen):
-
-```
-0 4 * * * find /root/backups -name "visitors-*.db" -mtime +30 -delete
-```
-
-Manuelles Backup:
+Verzeichnis anlegen und Skript ausführbar machen:
 
 ```bash
-sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db \
-  ".backup /root/backups/visitors-$(date +%Y%m%d-%H%M).db"
+mkdir -p /opt/visitor-mgmt-abatplus/backups /opt/visitor-mgmt-abatplus/logs
+chmod +x /opt/visitor-mgmt-abatplus/backup.sh
+chown svc-visitormgmtplus:svc-visitormgmtplus /opt/visitor-mgmt-abatplus/backups /opt/visitor-mgmt-abatplus/logs
+```
+
+**Als Cron-Job einplanen** — produktiv über `/etc/cron.d/` (läuft dann auch ohne Nutzer-Crontab des Systemnutzers), täglich 02:00 Uhr, unter dem unprivilegierten Prozessbenutzer statt root:
+
+```bash
+nano /etc/cron.d/visitor-mgmt-backups
+```
+
+```
+0 2 * * * svc-visitormgmtplus /opt/visitor-mgmt-abatplus/backup.sh >> /opt/visitor-mgmt-abatplus/logs/backup.log 2>&1
+```
+
+> **Wichtig:** Ein reines Vorhandensein des Skripts im Projekt reicht nicht — ohne diesen (oder einen gleichwertigen) Cron-Eintrag wird `backup.sh` von nichts aufgerufen und es entstehen schlicht keine Backups. Nach dem Einrichten mit `cat /etc/cron.d/visitor-mgmt-backups` und einem Blick in `logs/backup.log` am Folgetag verifizieren, dass der Lauf tatsächlich stattfindet.
+
+Manuelles Backup (z.B. vor einem Update):
+
+```bash
+sudo -u svc-visitormgmtplus /opt/visitor-mgmt-abatplus/backup.sh
 ```

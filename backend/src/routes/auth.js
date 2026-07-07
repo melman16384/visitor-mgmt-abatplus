@@ -6,7 +6,10 @@ const { authenticate } = require('../middleware/auth');
 const { log } = require('../services/audit-log');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // POST /login
 router.post('/login', (req, res) => {

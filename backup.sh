@@ -1,6 +1,6 @@
 #!/bin/bash
-BACKUP_DIR="/opt/visitor-mgmt/backups"
-DB_PATH="/opt/visitor-mgmt/backend/data/visitors.db"
+BACKUP_DIR="/opt/visitor-mgmt-abatplus/backups"
+DB_PATH="/opt/visitor-mgmt-abatplus/backend/data/visitors.db"
 KEEP_DAYS=30
 DATE=$(date +%Y-%m-%d)
 

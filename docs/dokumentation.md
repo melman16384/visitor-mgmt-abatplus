@@ -1,6 +1,6 @@
 # Besucherverwaltung abat+ — Projektdokumentation
 
-> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 23. Juni 2026  
+> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 6. Juli 2026 (Security-Hardening-Durchgang)  
 > Kunde: **abat AG**  
 > URL: https://visitorplus.luwilab.work  
 > Repository: https://github.com/melman16384/visitor-mgmt-abatplus  
@@ -27,7 +27,8 @@
 14. [Infrastruktur & Deployment](#14-infrastruktur--deployment)
 15. [Umgebungsvariablen (.env)](#15-umgebungsvariablen-env)
 16. [Wichtige Befehle](#16-wichtige-befehle)
-17. [Fehlerbehebung](#17-fehlerbehebung)
+17. [Sicherheit](#17-sicherheit)
+18. [Fehlerbehebung](#18-fehlerbehebung)
 
 ---
 
@@ -328,10 +329,27 @@ Eigenes Passwort ändern. Für SSO-Nutzer ohne gesetztes Passwort funktioniert d
 
 #### `GET /auth/microsoft`
 Leitet den Browser zur Microsoft-Anmeldeseite weiter (OAuth2 Authorization Code Flow).  
-Kein JSON — direkte Browser-Navigation.
+Kein JSON — direkte Browser-Navigation. Erzeugt dabei einen zufälligen, einmalig gültigen `state`-Parameter (`crypto.randomBytes(24)`, serverseitig 5 Minuten gültig) und übergibt ihn an Microsoft — Schutz vor CSRF (siehe [Kapitel 17, Sicherheit](#17-sicherheit)).
 
 #### `GET /auth/microsoft/callback`
-Wird von Microsoft nach erfolgreicher Anmeldung aufgerufen. Tauscht den Code gegen ein Token, legt ggf. User + Host an und leitet zu `/auth-callback?token=…` weiter.
+Wird von Microsoft nach erfolgreicher Anmeldung aufgerufen. Prüft zuerst den zurückgegebenen `state`-Parameter gegen die serverseitige Liste offener Anfragen (ungültig/unbekannt → Redirect mit `?error=invalid_state`) und verbraucht ihn danach (einmalig nutzbar). Tauscht den Code anschließend gegen ein Access-Token, legt ggf. User + Host an und leitet **nicht mehr mit dem JWT im Query-String**, sondern mit einem kurzlebigen, einmalig einlösbaren Austauschcode weiter: `/auth-callback?code=…` (`crypto.randomBytes(24)`, 60 Sekunden gültig, serverseitig gespeichert).
+
+#### `POST /auth/microsoft/exchange`
+Löst den Austauschcode aus dem Callback-Redirect gegen das eigentliche JWT ein. Wird von `frontend/src/pages/AuthCallback.jsx` unmittelbar nach dem Redirect aufgerufen.
+
+**Body:**
+```json
+{ "code": "a3f9c1..." }
+```
+
+**Antwort (200):**
+```json
+{ "token": "eyJ..." }
+```
+
+**Fehler:** `400` (`invalid_or_expired_code`) wenn der Code unbekannt, bereits eingelöst oder abgelaufen ist.
+
+> Damit landet das JWT nie mehr in der URL — nicht in Nginx-Access-Logs, nicht in der Browser-Historie, nicht im `Referer`-Header nachfolgender Requests. Das Token wird ausschließlich per POST-Body über HTTPS übertragen.
 
 ---
 
@@ -541,17 +559,26 @@ Hat der Benutzer bereits Besuche erfasst (`checked_in_by`-Referenz), wird er nur
 Das System nutzt den **OAuth2 Authorization Code Flow** über Microsoft Entra ID (ehemals Azure AD):
 
 ```
-1. Mitarbeiter klickt „Mit Microsoft-Konto anmelden"
-2. Browser → GET /api/auth/microsoft
-3. Backend generiert Microsoft-Auth-URL (via MSAL) und leitet weiter
-4. Mitarbeiter meldet sich bei Microsoft an (ggf. bereits eingeloggt = automatisch)
-5. Microsoft → GET /api/auth/microsoft/callback?code=…
-6. Backend tauscht Code gegen Access-Token (MSAL)
-7. Backend ruft Microsoft Graph API ab: GET /v1.0/me → echte E-Mail + Displayname
-8. Falls User noch nicht existiert: User + Host werden automatisch angelegt
-9. Backend stellt JWT aus und leitet zu /auth-callback?token=… weiter
-10. Frontend speichert Token, leitet auf /dashboard weiter
+1.  Mitarbeiter klickt „Mit Microsoft-Konto anmelden"
+2.  Browser → GET /api/auth/microsoft
+3.  Backend erzeugt einen einmaligen state-Parameter (CSRF-Schutz),
+    generiert die Microsoft-Auth-URL (via MSAL) und leitet weiter
+4.  Mitarbeiter meldet sich bei Microsoft an (ggf. bereits eingeloggt = automatisch)
+5.  Microsoft → GET /api/auth/microsoft/callback?code=…&state=…
+6.  Backend prüft state gegen die serverseitige Liste offener Anfragen
+    und verwirft ihn danach (einmalig nutzbar)
+7.  Backend tauscht Code gegen Access-Token (MSAL)
+8.  Backend ruft Microsoft Graph API ab: GET /v1.0/me → echte E-Mail + Displayname
+9.  Falls User noch nicht existiert: ggf. Domain-Prüfung (SSO_ALLOWED_DOMAINS),
+    dann werden User + Host automatisch angelegt
+10. Backend stellt JWT aus, hinterlegt es hinter einem kurzlebigen
+    Einmal-Code und leitet zu /auth-callback?code=… weiter (kein Token in der URL)
+11. Frontend (AuthCallback.jsx) ruft POST /api/auth/microsoft/exchange
+    mit { code } auf und erhält das JWT im Response-Body
+12. Frontend speichert Token, leitet auf /dashboard weiter
 ```
+
+> Details zu state-CSRF-Schutz und Austauschcode-Mechanismus: siehe [Kapitel 17, Sicherheit](#17-sicherheit).
 
 ### Datenquellen aus Microsoft Graph
 
@@ -575,6 +602,12 @@ Bei **weiteren Logins** desselben Accounts:
 - Kein neuer Eintrag — sofortiger Login
 
 > Wurden Accounts noch mit dem UPN angelegt (vor der Graph-API-Umstellung), müssen E-Mail-Adressen in Einstellungen → Benutzer manuell korrigiert werden.
+
+### Domain-Allowlist für Auto-Provisionierung (optional)
+
+Über die optionale Umgebungsvariable `SSO_ALLOWED_DOMAINS` (kommagetrennte Liste, z.B. `abatplus.de,abat.de`) kann eingeschränkt werden, welche E-Mail-Domains bei der **erstmaligen** SSO-Anmeldung automatisch einen neuen Account erhalten. Ist die Variable gesetzt und die Domain des Microsoft-Kontos nicht enthalten, wird die Auto-Provisionierung abgelehnt (Redirect mit `?error=domain_not_allowed`) — bestehende Accounts können sich unabhängig davon weiterhin anmelden.
+
+Ist `SSO_ALLOWED_DOMAINS` **nicht gesetzt** (aktueller Stand in der Produktivumgebung), ändert sich nichts am bisherigen Verhalten: Jeder erfolgreich gegen den konfigurierten Azure-Tenant authentifizierte Nutzer kann automatisch angelegt werden. Sobald die Ziel-Domain(s) feststehen, wird empfohlen, `SSO_ALLOWED_DOMAINS` produktiv zu setzen (siehe [installation.md, Kapitel 5](./installation.md#5-microsoft-sso-einrichten-azure)).
 
 ### Azure App Registration einrichten
 
@@ -819,12 +852,15 @@ pm2 logs visitor-mgmt --lines 100  # Letzte 100 Zeilen
 pm2 stop visitor-mgmt             # Anhalten
 ```
 
+> **Kein root-Betrieb:** Der Prozess läuft nicht mehr unter root, sondern unter dem dedizierten, unprivilegierten Systembenutzer `svc-visitormgmtplus` (Eintrag in `/opt/ecosystem.config.js`, `uid`/`gid`). `/opt/visitor-mgmt-abatplus` gehört diesem Benutzer. Details siehe [Kapitel 17, Sicherheit](#17-sicherheit).
+
 ---
 
 ## 15. Umgebungsvariablen (.env)
 
 **Datei:** `/opt/visitor-mgmt-abatplus/backend/.env`  
-**Nicht in Git** — von `.gitignore` ausgeschlossen. Vorlage unter `backend/.env.example`.
+**Nicht in Git** — von `.gitignore` ausgeschlossen. Vorlage unter `backend/.env.example`.  
+**Dateiberechtigung:** `600`, Eigentümer `svc-visitormgmtplus` — die Datei enthält JWT-Secret und Azure-Clientgeheimnis und darf nicht world-readable sein.
 
 | Variable | Pflicht | Beschreibung |
 |---|---|---|
@@ -835,10 +871,11 @@ pm2 stop visitor-mgmt             # Anhalten
 | `AZURE_CLIENT_ID` | SSO | Client-ID der Azure App Registration |
 | `AZURE_TENANT_ID` | SSO | Tenant-ID des Entra ID-Verzeichnisses |
 | `AZURE_CLIENT_SECRET` | SSO | Clientgeheimnis — läuft ab, muss erneuert werden! |
+| `SSO_ALLOWED_DOMAINS` | Optional | Kommagetrennte Liste erlaubter E-Mail-Domains für die SSO-Auto-Provisionierung neuer Accounts (z.B. `abatplus.de,abat.de`). Unbesetzt = keine Einschränkung (aktueller Produktivstand). Siehe [Kapitel 7](#7-microsoft-sso). |
 | `ADMIN_EMAIL` | Optional | Initialer Admin (nur beim allerersten Start wirksam) |
 | `ADMIN_PASSWORD` | Optional | Initiales Admin-Passwort |
 
-> **JWT_SECRET:** Niemals leer lassen, niemals in Git einchecken. Bei Änderung werden alle bestehenden Tokens ungültig — alle Nutzer müssen sich neu anmelden.
+> **JWT_SECRET:** Niemals leer lassen, niemals in Git einchecken. Bei Änderung werden alle bestehenden Tokens ungültig — alle Nutzer müssen sich neu anmelden. `auth.js` und `auth-microsoft.js` werfen beim Start einen Fehler, wenn die Variable fehlt — es gibt keinen unsicheren Default-Fallback mehr (siehe [Kapitel 17, Sicherheit](#17-sicherheit)).
 
 > **DB_PATH absolut:** Ein relativer Pfad führt dazu, dass je nach Startverzeichnis eine andere DB geöffnet wird. Bei `pm2` ist das Arbeitsverzeichnis gesetzt, aber bei manuellen Starts kann es abweichen.
 
@@ -906,7 +943,58 @@ tail -f /root/.pm2/logs/visitor-mgmt-error.log
 
 ---
 
-## 17. Fehlerbehebung
+## 17. Sicherheit
+
+> Ergebnis eines Security-Hardening-Durchgangs auf dem Produktivserver (Juli 2026). Dieses Kapitel dokumentiert den aktuellen Sicherheitsstand — sowohl serverweite Infrastruktur-Maßnahmen als auch app-spezifische Änderungen an dieser Instanz.
+
+### Host-/Netzwerk-Ebene (serverweit, betrifft alle Apps auf diesem Server)
+
+| Maßnahme | Status |
+|---|---|
+| **UFW-Firewall** | Aktiv, Default-Deny eingehend. Nur Port 22 (SSH), 80 und 443 offen. |
+| **Node-Backend-Port** | Nicht mehr direkt aus dem Internet erreichbar — nur noch über den Nginx-Reverse-Proxy. Express bindet in `backend/src/index.js` explizit an `127.0.0.1` statt `0.0.0.0`. |
+| **fail2ban** | Installiert und aktiv, mit sshd-Jail gegen Brute-Force-Login-Versuche. |
+| **SSH** | X11Forwarding deaktiviert. |
+| **Nginx (global, `/etc/nginx/nginx.conf`)** | `ssl_protocols` auf TLSv1.2/TLSv1.3 beschränkt, `server_tokens off` (keine Versionsangabe in Response-Headern). |
+
+### Nginx — Site-Konfiguration (`/etc/nginx/sites-available/visitorplus.luwilab.work`)
+
+- **Rate Limiting:**
+  - Zone `login_limit` (5 Requests/Minute pro IP) auf `/api/auth/` — deckt sowohl den lokalen Passwort-Login als auch die Microsoft-SSO-Routen ab, da `/api/auth/microsoft` unterhalb von `/api/auth/` liegt.
+  - Zone `api_limit` (60 Requests/Minute pro IP) auf die übrigen `/api/`-Routen.
+- **Defense-in-Depth:** `location ~ /\.git { deny all; }` zusätzlich zur bereits bestehenden statischen Auslieferung aus `frontend/dist` (in dem `.git` ohnehin nicht liegt).
+
+### Prozess- & Dateiberechtigungen
+
+- Der PM2-Prozess läuft **nicht mehr als root**. Ein dedizierter, unprivilegierter Systembenutzer `svc-visitormgmtplus` wurde angelegt; `/opt/visitor-mgmt-abatplus` gehört vollständig diesem Benutzer. In `/opt/ecosystem.config.js` ist für den Eintrag `visitor-mgmt-abatplus` `uid: 'svc-visitormgmtplus'` / `gid: 'svc-visitormgmtplus'` gesetzt.
+- `backend/.env` wurde von `644` (world-readable) auf **`600`** geändert — die Datei enthält JWT-Secret und Azure/MSAL-Clientgeheimnis.
+- SQLite-Datenbank- und Backup-Dateien wurden auf **`640`** gesetzt, Eigentümer jeweils `svc-visitormgmtplus`.
+
+### JWT & Zugangsdaten
+
+- **JWT_SECRET rotiert:** Neuer, zufälliger 128-stelliger Hex-Wert in `backend/.env`. Wie immer bei einer Rotation gilt: alle vorher ausgestellten Tokens sind ungültig geworden, alle Nutzer mussten sich neu anmelden.
+- **Unsicherer Fallback entfernt:** `backend/src/routes/auth.js` und `backend/src/routes/auth-microsoft.js` enthielten zuvor `process.env.JWT_SECRET || 'secret'` — bei fehlender Umgebungsvariable wäre also unbemerkt mit dem hartkodierten, öffentlich bekannten Wert `'secret'` signiert worden. Beide Routen werfen jetzt beim Start einen Fehler, wenn `JWT_SECRET` nicht gesetzt ist, statt still auf den Fallback auszuweichen.
+
+### Microsoft-SSO-Flow gehärtet (`backend/src/routes/auth-microsoft.js`)
+
+- **CSRF-Schutz (state-Parameter):** Die OAuth-Autorisierungsanfrage enthält jetzt einen unvorhersehbaren, einmalig gültigen `state`-Parameter (`crypto.randomBytes(24)`, serverseitig im Speicher gehalten, 5 Minuten TTL). Der Callback validiert den zurückgegebenen `state` gegen die Liste offener Anfragen, bevor er fortfährt, und löscht ihn danach (Einmalgebrauch). Vorher gab es überhaupt keinen `state`-Parameter — eine klassische OAuth-CSRF-Lücke, über die ein Angreifer den Browser eines Opfers dazu bringen konnte, einen vom Angreifer initiierten Auth-Flow abzuschließen.
+- **Kein Token mehr im URL-Query-String:** Der Callback leitete vorher direkt mit `${APP_URL}/auth-callback?token=${jwt}` weiter — das JWT landete dadurch in Nginx-Access-Logs, Browser-Historie und im `Referer`-Header nachfolgender Requests. Jetzt stellt der Callback stattdessen einen kurzlebigen, einmalig einlösbaren Austauschcode aus (`crypto.randomBytes(24)`, 60 Sekunden TTL, serverseitig im Speicher) und leitet mit `?code=…` weiter. Das Frontend (`frontend/src/pages/AuthCallback.jsx`) ruft den neuen Endpunkt `POST /api/auth/microsoft/exchange` mit `{ code }` im JSON-Body auf und erhält `{ token }` zurück, sofern der Code gültig und noch nicht eingelöst ist (sonst `400`). Das eigentliche JWT wird jetzt ausschließlich per POST-Body über HTTPS übertragen, nie mehr über eine URL.
+- **Neu: optionale Domain-Allowlist** über `SSO_ALLOWED_DOMAINS` — siehe [Kapitel 7, Domain-Allowlist für Auto-Provisionierung](#7-microsoft-sso).
+- **Betriebshinweis:** Microsoft SSO ist in der aktuellen Produktivumgebung **noch nicht konfiguriert** (`AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET` sind in der Live-`.env` leer) — der Endpunkt liefert aktuell `503 „Microsoft SSO nicht konfiguriert"`. Die oben beschriebenen Härtungsmaßnahmen sind vollständig implementiert und einsatzbereit, wurden auf diesem Server aber noch nicht Ende-zu-Ende gegen einen echten Azure-Tenant getestet. Einrichtung siehe [installation.md, Kapitel 5](./installation.md#5-microsoft-sso-einrichten-azure).
+
+### Backup-Skript-Bug behoben
+
+`/opt/visitor-mgmt-abatplus/backup.sh` verwies durch einen Copy-Paste-Fehler (vom Schwesterprojekt visitor-mgmt) auf falsche, fest kodierte Pfade: `/opt/visitor-mgmt/backups` und `/opt/visitor-mgmt/backend/data/visitors.db` — **die Datenbank des jeweils anderen Projekts**. Wäre das Skript in diesem Zustand gelaufen, hätte es die falsche Datenbank ins falsche Verzeichnis gesichert. Das Skript referenziert jetzt korrekt `/opt/visitor-mgmt-abatplus/backups` und `/opt/visitor-mgmt-abatplus/backend/data/visitors.db`.
+
+Zusätzlich rief bis dahin **kein Cron-Job und kein Scheduler** das Skript überhaupt auf — Backups waren dadurch de facto nie erstellt worden. Ein Cron-Eintrag wurde ergänzt: `/etc/cron.d/visitor-mgmt-backups`, läuft täglich um 02:00 Uhr als `svc-visitormgmtplus`, Logausgabe nach `logs/backup.log`. Details siehe [installation.md, Kapitel 13](./installation.md#13-automatisches-backup).
+
+### Offener Punkt — noch nicht abschließend geklärt
+
+In der Live-Datenbank existieren zwei Accounts mit generisch wirkenden Namen: `admin@example.com` und `user@example.com`. Es ist nicht abschließend geklärt, ob es sich um legitime aktive Accounts oder um übrig gebliebene Test-Accounts handelt. Dies wurde dem Betreiber zur Prüfung gemeldet (umbenennen, Passwortstärke verifizieren oder deaktivieren) — es wurde noch **keine automatische Aktion** vorgenommen. Vor einem produktiven Go-Live sollten diese Accounts geprüft werden (siehe auch [installation.md, Kapitel 11](./installation.md#11-erster-start--test)).
+
+---
+
+## 18. Fehlerbehebung
 
 ### „Anmeldung fehlgeschlagen" — kein Netzwerkfehler sichtbar
 Backend läuft nicht.
