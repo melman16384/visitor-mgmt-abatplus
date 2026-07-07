@@ -7,14 +7,20 @@ const { notifyHostOfArrival } = require('../services/notify-host');
 
 const router = express.Router();
 
-// Liefert offene Vorregistrierungen in der gemeinsamen Zeilenform der Besucherliste
-// (kein separates Datenmodell in der UI — "vorregistriert" ist nur ein Status in derselben Liste).
-function getPreregRows(search) {
+// Liefert Vorregistrierungen (pending oder cancelled) in der Zeilenform der Besucherliste.
+// Bewusst NICHT nach dem Tages-Filter gefiltert: eine offene Vorregistrierung ist eine
+// Aufgabe/ein Termin, kein tagesgebundener Protokolleintrag — sie soll unabhängig vom
+// gerade angezeigten Tag sichtbar bleiben, bis sie eingecheckt oder abgesagt wird
+// (sonst würde z.B. eine für morgen geplante Vorregistrierung heute "verschwinden").
+function getPreregRows(search, preregStatus) {
   const s = `%${search}%`;
-  const where = search
-    ? `WHERE p.status = 'pending' AND (p.visitor_first_name LIKE ? OR p.visitor_last_name LIKE ? OR p.visitor_company LIKE ?)`
-    : `WHERE p.status = 'pending'`;
-  const params = search ? [s, s, s] : [];
+  const conditions = ['p.status = ?'];
+  const params = [preregStatus];
+
+  if (search) {
+    conditions.push('(p.visitor_first_name LIKE ? OR p.visitor_last_name LIKE ? OR p.visitor_company LIKE ?)');
+    params.push(s, s, s);
+  }
 
   const rows = db.prepare(`
     SELECT p.id as prereg_id, p.visitor_first_name as first_name, p.visitor_last_name as last_name,
@@ -22,47 +28,50 @@ function getPreregRows(search) {
       h.name as host_name, h.id as host_id, h.email as host_email
     FROM preregistrations p
     LEFT JOIN hosts h ON p.host_id = h.id
-    ${where}
+    WHERE ${conditions.join(' AND ')}
   `).all(...params);
 
   return rows.map(r => ({
     ...r,
     visit_id: null,
-    visit_status: 'vorregistriert',
+    visit_status: preregStatus === 'cancelled' ? 'abgesagt' : 'vorregistriert',
     checked_in_at: null,
     checked_out_at: null,
     checked_in_by_name: null,
-    sort_ts: r.expected_date ? `${r.expected_date}T${r.expected_time || '00:00'}` : r.created_at,
   }));
 }
 
-// GET / - paginated list
+// GET / - paginierte Liste, ein Status/Tag je Aufruf (Tabs: active/completed/vorregistriert/cancelled)
 router.get('/', authenticate, (req, res) => {
-  const { search = '', status = 'all', page = 1, limit = 20 } = req.query;
+  const { search = '', status = 'active', date, page = 1, limit = 20 } = req.query;
   const offset = (parseInt(page) - 1) * parseInt(limit);
+  const today = new Date().toISOString().split('T')[0];
+  const day = date || today;
   const s = `%${search}%`;
 
-  const searchWhere = search
-    ? `AND (vi.first_name LIKE ? OR vi.last_name LIKE ? OR vi.company LIKE ?)`
-    : '';
-  const searchParams = search ? [s, s, s] : [];
-
-  if (status === 'vorregistriert') {
-    const all = getPreregRows(search).sort((a, b) => (a.sort_ts < b.sort_ts ? 1 : -1));
+  if (status === 'vorregistriert' || status === 'cancelled') {
+    const all = getPreregRows(search, status === 'cancelled' ? 'cancelled' : 'pending')
+      .sort((a, b) => {
+        const ta = a.expected_date ? `${a.expected_date}T${a.expected_time || '00:00'}` : a.created_at;
+        const tb = b.expected_date ? `${b.expected_date}T${b.expected_time || '00:00'}` : b.created_at;
+        return ta < tb ? 1 : -1;
+      });
     const total = all.length;
     const rows = all.slice(offset, offset + parseInt(limit));
     return res.json({ visitors: rows, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
   }
 
   if (status === 'completed') {
+    const searchWhere = search ? `AND (vi.first_name LIKE ? OR vi.last_name LIKE ? OR vi.company LIKE ?)` : '';
+    const searchParams = search ? [s, s, s] : [];
+
     const total = db.prepare(`
       SELECT COUNT(DISTINCT vi.id) as total
       FROM visitors vi
-      INNER JOIN visits v ON v.visitor_id = vi.id AND v.status = 'completed'
+      INNER JOIN visits v ON v.visitor_id = vi.id AND v.status = 'completed' AND date(v.checked_out_at) = ?
         AND v.id = (SELECT MAX(v2.id) FROM visits v2 WHERE v2.visitor_id = vi.id AND v2.status = 'completed')
-      WHERE NOT EXISTS (SELECT 1 FROM visits va WHERE va.visitor_id = vi.id AND va.status = 'active')
       ${searchWhere}
-    `).get(...searchParams).total;
+    `).get(day, ...searchParams).total;
 
     const rows = db.prepare(`
       SELECT vi.id, vi.first_name, vi.last_name, vi.company, vi.email,
@@ -70,62 +79,36 @@ router.get('/', authenticate, (req, res) => {
         h.name as host_name, h.id as host_id,
         u.name as checked_in_by_name
       FROM visitors vi
-      INNER JOIN visits v ON v.visitor_id = vi.id AND v.status = 'completed'
+      INNER JOIN visits v ON v.visitor_id = vi.id AND v.status = 'completed' AND date(v.checked_out_at) = ?
         AND v.id = (SELECT MAX(v2.id) FROM visits v2 WHERE v2.visitor_id = vi.id AND v2.status = 'completed')
       LEFT JOIN hosts h ON v.host_id = h.id
       LEFT JOIN users u ON v.checked_in_by = u.id
-      WHERE NOT EXISTS (SELECT 1 FROM visits va WHERE va.visitor_id = vi.id AND va.status = 'active')
       ${searchWhere}
       ORDER BY v.checked_out_at DESC
       LIMIT ? OFFSET ?
-    `).all(...searchParams, parseInt(limit), offset);
+    `).all(day, ...searchParams, parseInt(limit), offset);
 
     return res.json({ visitors: rows, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
   }
 
-  let where = [];
-  let params = [];
+  // status === 'active' (Standard)
+  let where = [`v.status = 'active'`, `date(v.checked_in_at) = ?`];
+  let params = [day];
 
   if (search) {
     where.push(`(vi.first_name LIKE ? OR vi.last_name LIKE ? OR vi.company LIKE ?)`);
     params.push(s, s, s);
   }
-  if (status === 'active') {
-    where.push(`v.status = 'active'`);
-  }
+  const whereClause = 'WHERE ' + where.join(' AND ');
+  const visitJoin = `LEFT JOIN visits v ON vi.id = v.visitor_id AND v.status = 'active'`;
 
-  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const visitJoin = status === 'active'
-    ? `LEFT JOIN visits v ON vi.id = v.visitor_id AND v.status = 'active'`
-    : `LEFT JOIN visits v ON v.id = (SELECT id FROM visits WHERE visitor_id = vi.id ORDER BY checked_in_at DESC LIMIT 1)`;
+  const total = db.prepare(`
+    SELECT COUNT(DISTINCT vi.id) as total
+    FROM visitors vi ${visitJoin}
+    ${whereClause}
+  `).get(...params).total;
 
-  if (status === 'active') {
-    const total = db.prepare(`
-      SELECT COUNT(DISTINCT vi.id) as total
-      FROM visitors vi ${visitJoin}
-      ${whereClause}
-    `).get(...params).total;
-
-    const rows = db.prepare(`
-      SELECT vi.id, vi.first_name, vi.last_name, vi.company, vi.email,
-        v.id as visit_id, v.status as visit_status, v.checked_in_at, v.checked_out_at, v.privacy_accepted, v.notes,
-        h.name as host_name, h.id as host_id,
-        u.name as checked_in_by_name
-      FROM visitors vi
-      ${visitJoin}
-      LEFT JOIN hosts h ON v.host_id = h.id
-      LEFT JOIN users u ON v.checked_in_by = u.id
-      ${whereClause}
-      ORDER BY vi.created_at DESC
-      LIMIT ? OFFSET ?
-    `).all(...params, parseInt(limit), offset);
-
-    return res.json({ visitors: rows, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
-  }
-
-  // status === 'all' — Besuche (jeweils letzter Besuch je Besucher) und offene
-  // Vorregistrierungen werden in einer gemeinsamen, gemeinsam sortierten Liste zusammengeführt.
-  const visitRows = db.prepare(`
+  const rows = db.prepare(`
     SELECT vi.id, vi.first_name, vi.last_name, vi.company, vi.email,
       v.id as visit_id, v.status as visit_status, v.checked_in_at, v.checked_out_at, v.privacy_accepted, v.notes,
       h.name as host_name, h.id as host_id,
@@ -135,13 +118,9 @@ router.get('/', authenticate, (req, res) => {
     LEFT JOIN hosts h ON v.host_id = h.id
     LEFT JOIN users u ON v.checked_in_by = u.id
     ${whereClause}
-  `).all(...params).map(r => ({ ...r, sort_ts: r.checked_in_at || '' }));
-
-  const preregRows = getPreregRows(search);
-
-  const combined = [...visitRows, ...preregRows].sort((a, b) => (a.sort_ts < b.sort_ts ? 1 : -1));
-  const total = combined.length;
-  const rows = combined.slice(offset, offset + parseInt(limit));
+    ORDER BY v.checked_in_at DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, parseInt(limit), offset);
 
   res.json({ visitors: rows, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
 });
@@ -171,9 +150,6 @@ router.post('/', authenticate, (req, res) => {
   if (!first_name || !last_name) {
     return res.status(400).json({ error: 'Vor- und Nachname erforderlich' });
   }
-  if (!notes || !notes.trim()) {
-    return res.status(400).json({ error: 'Notizen sind erforderlich' });
-  }
 
   let resolvedHostId = host_id || null;
   if (!resolvedHostId && host_email) {
@@ -201,7 +177,7 @@ router.post('/', authenticate, (req, res) => {
   const visitResult = db.prepare(`
     INSERT INTO visits (visitor_id, host_id, checked_in_at, notes, status, privacy_accepted, checked_in_by)
     VALUES (?, ?, ?, ?, 'active', ?, ?)
-  `).run(visitor.id, resolvedHostId, checkinTime.toISOString(), notes.trim(),
+  `).run(visitor.id, resolvedHostId, checkinTime.toISOString(), notes ? notes.trim() : null,
     privacy_accepted ? 1 : 0, req.user.id);
 
   const visit = db.prepare(`

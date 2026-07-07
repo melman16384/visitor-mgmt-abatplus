@@ -53,14 +53,15 @@ Schlanke, mitarbeitergesteuerte Besucherverwaltung, entwickelt ausschließlich f
 | Check-out | Manuell per Klick mit Bestätigungsdialog, oder automatisch zur konfigurierten Uhrzeit |
 | Checkout rückgängig | Ein am selben Tag ausgecheckter Besuch kann per Klick reaktiviert werden |
 | „Erfasst durch" | Speichert Name + Zeitstempel des einchecke­nden Mitarbeiters |
-| Gemeinsame Besucherliste | Vorregistrierung, Anwesend, Ausgecheckt und Alle sind Status **einer** Liste (`/visitors`) — keine getrennte Datenpflege |
+| Gemeinsame Besucherliste | Vorregistriert, Anwesend, Ausgecheckt und Abgesagt sind Tabs **einer** Liste (`/visitors`) — keine getrennte Datenpflege |
 | Vorregistrierungen | Besucher vorab eintragen (in der Besucherliste integriert); bei Ankunft per Klick einchecken, Uhrzeit dabei leicht korrigierbar |
 | Gastgeber aus Active Directory | Autocomplete ab 3 Zeichen gegen das Firmen-AD (separates App-only-Verzeichniskonto); lokale Gastgeber-Verwaltungsseite entfällt |
 | Gastgeber-Benachrichtigung | Optionale Mail an den Gastgeber bei Ankunft des Besuchers (Microsoft Graph `sendMail`) |
 | Admin-AD-Gegencheck | Einstellungen → Gastgeber: prüft lokale Gastgeber-Einträge gegen das Verzeichnis |
 | Microsoft SSO | Login mit Firmenkonto; User + Gastgeber-Eintrag automatisch angelegt |
-| Datenschutzhinweis | Checkbox „Besucher wurde auf die Datenschutzerklärung hingewiesen" statt Unterschriftspad |
-| Notizen | Pflichtfeld beim Check-in/bei der Vorregistrierung, sichtbar in der Besucherliste |
+| Datenschutzhinweis | Checkbox „Besucher wurde auf die Datenschutzerklärung hingewiesen", verlinkt auf https://www.abat.de/datenschutz — statt Unterschriftspad |
+| Notizen | Optionales Feld beim Check-in/bei der Vorregistrierung, sichtbar in der Besucherliste |
+| Tages-Filter | Besucherliste zeigt standardmäßig den heutigen Tag; per Datumsfeld auf einen anderen Tag umschaltbar |
 | Mobil-optimiert | Vollständig responsiv — Handy + Desktop gleichwertig |
 | Auto-Checkout | Täglich zur konfigurierbaren Uhrzeit (Standard: 20:00), abschaltbar |
 | Zwei Rollen | `admin` (Vollzugriff) / `user` (einchecken + lesen); Vorregistrierung absagen: nur zugeordneter Gastgeber oder Admin |
@@ -179,7 +180,7 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── Login.jsx            # Anmeldeseite (Microsoft-Button + lokaler Fallback)
 │   │   │   ├── AuthCallback.jsx     # Verarbeitet OAuth-Redirect + speichert JWT
 │   │   │   ├── Dashboard.jsx        # Übersicht, Statistiken, Check-in-Button
-│   │   │   ├── Visitors.jsx         # Zentrale Besucherliste: Anwesend/Vorregistriert/Ausgecheckt/Alle in einer Ansicht
+│   │   │   ├── Visitors.jsx         # Zentrale Besucherliste: Vorregistriert/Anwesend/Ausgecheckt/Abgesagt in einer Ansicht
 │   │   │   └── Settings.jsx         # Auto-Checkout, Datenspeicherung, Passwort, Benutzer, Gastgeber (AD-Gegencheck)
 │   │   ├── components/
 │   │   │   ├── Layout.jsx           # Shell mit Header, Toast-System
@@ -391,12 +392,13 @@ Letzte 10 Besuche (neueste zuerst), mit Mitarbeiter und Erfasser.
 ### Besucher
 
 #### `GET /visitors`
-Gibt eine paginierte, **zusammengeführte** Liste zurück — Besuche und offene Vorregistrierungen in einer Ansicht, keine getrennte Datenpflege in der UI.
+Gibt eine paginierte Liste für **einen** Tab und **einen** Tag zurück — Besuche und Vorregistrierungen teilen sich denselben Endpoint statt getrennter Datenhaltung.
 
 **Query-Parameter:**
 | Parameter | Default | Beschreibung |
 |---|---|---|
-| `status` | `all` | `active` (anwesend), `completed` (ausgecheckt), `vorregistriert` oder `all` (alle, inkl. offener Vorregistrierungen) |
+| `status` | `active` | `active` (anwesend), `completed` (ausgecheckt), `vorregistriert` (offen) oder `cancelled` (abgesagt) |
+| `date` | heutiges Datum | `YYYY-MM-DD` — filtert `active` auf `checked_in_at`, `completed` auf `checked_out_at`; bei `vorregistriert`/`cancelled` bleiben Einträge ohne `expected_date` immer sichtbar |
 | `search` | — | Suche in Vor-/Nachname und Unternehmen |
 | `page` | `1` | Seite |
 | `limit` | `25` | Einträge pro Seite |
@@ -411,7 +413,7 @@ Gibt eine paginierte, **zusammengeführte** Liste zurück — Besuche und offene
 }
 ```
 
-Besuchs-Einträge enthalten `visit_id`, `visit_status` (`active`/`completed`), `checked_in_at`, `checked_out_at`, `notes`, `host_name`, `checked_in_by_name`. Vorregistrierungs-Einträge (nur bei `status=vorregistriert` oder `all`) sind über das Feld `prereg_id` (statt `visit_id`) erkennbar, `visit_status` ist dann `vorregistriert`; `checked_in_at`/`checked_out_at`/`checked_in_by_name` sind `null`, stattdessen sind `expected_date`/`expected_time` gesetzt. Bei `status=all` werden beide Quellen serverseitig zusammengeführt, gemeinsam nach Zeitstempel sortiert und gemeinsam paginiert.
+Besuchs-Einträge (`status=active`/`completed`) enthalten `visit_id`, `visit_status`, `checked_in_at`, `checked_out_at`, `notes`, `host_name`, `checked_in_by_name`. Vorregistrierungs-Einträge (`status=vorregistriert`/`cancelled`) sind über das Feld `prereg_id` (statt `visit_id`) erkennbar; `visit_status` ist dann `vorregistriert` bzw. `abgesagt`, `checked_in_at`/`checked_out_at`/`checked_in_by_name` sind `null`, stattdessen sind `expected_date`/`expected_time` gesetzt.
 
 ---
 
@@ -431,7 +433,7 @@ Checkt einen Besucher direkt ein. Legt `visitor` + `visit` in einem Schritt an. 
 }
 ```
 
-**Pflichtfelder:** `first_name`, `last_name`, `notes`, `privacy_accepted: true`, sowie ein Gastgeber — entweder `host_id` (bestehender lokaler Gastgeber) **oder** `host_name`/`host_email`/`host_ad_object_id` (aus der AD-Autocomplete; der Gastgeber wird dabei per `findOrCreateHostByEmail()` gefunden oder angelegt).
+**Pflichtfelder:** `first_name`, `last_name`, `privacy_accepted: true`, sowie ein Gastgeber — entweder `host_id` (bestehender lokaler Gastgeber) **oder** `host_name`/`host_email`/`host_ad_object_id` (aus der AD-Autocomplete; der Gastgeber wird dabei per `findOrCreateHostByEmail()` gefunden oder angelegt). `notes` ist optional.
 
 `checked_in_at` ist optional (Frontend belegt das Feld mit der aktuellen Zeit vor, änderbar) — ohne Angabe wird der Server-Zeitpunkt verwendet.
 
@@ -557,7 +559,9 @@ Ohne Angabe wird der Server-Zeitpunkt verwendet. Das Frontend bietet dafür eine
 ```
 
 #### `DELETE /preregistrations/:id`
-Admin: löscht dauerhaft. Zugeordneter Gastgeber (E-Mail-Match auf `req.user.email`): storniert (`status = cancelled`). Alle anderen: `403`.
+Zweistufig, abhängig vom aktuellen Status:
+- **Status `pending`** (Absagen): Admin oder zugeordneter Gastgeber (E-Mail-Match auf `req.user.email`) → `status = cancelled`, Eintrag erscheint im Tab „Abgesagt". Alle anderen: `403`.
+- **Status `cancelled`** (endgültig löschen): nur `admin` → Datensatz wird hart gelöscht. Andere: `403`.
 
 ---
 
@@ -732,7 +736,7 @@ Ist eine der drei `AZURE_DIRECTORY_*`-Variablen leer, liefern `/hosts/search-ad`
 | `/login` | Anmeldung (Microsoft-Button + lokaler Fallback) | öffentlich |
 | `/auth-callback` | OAuth-Rückgabe — verarbeitet Token, leitet weiter | öffentlich |
 | `/dashboard` | Statistiken, letzte Aktivitäten (max. 10), Check-in-Button | alle |
-| `/visitors` | Zentrale Besucherliste — Tabs Anwesend/Vorregistriert/Ausgecheckt/Alle, mobile Kartenansicht | alle |
+| `/visitors` | Zentrale Besucherliste — Tabs Vorregistriert/Anwesend/Ausgecheckt/Abgesagt, mobile Kartenansicht | alle |
 | `/settings` | Einstellungen (Tabs je nach Rolle, inkl. Gastgeber-AD-Gegencheck für admin) | alle |
 
 `/hosts` und `/preregistrations` existieren als Routen nicht mehr; alte Links werden auf `/dashboard` bzw. `/visitors` umgeleitet (React-Router-Redirect in `App.jsx`).
@@ -758,18 +762,21 @@ Darunter eine Liste der letzten 10 Aktivitäten mit Name, Unternehmen, Gastgeber
 
 ### Besucherliste (`/visitors`)
 
-Vier Tabs: **Anwesend** · **Vorregistriert** · **Ausgecheckt** · **Alle** — eine gemeinsame Liste statt getrennter Seiten für Besucher und Vorregistrierungen. Suchfeld filtert in Echtzeit nach Name und Unternehmen.
+Vier Tabs: **Vorregistriert** · **Anwesend** · **Ausgecheckt** · **Abgesagt** — eine gemeinsame Liste statt getrennter Seiten für Besucher und Vorregistrierungen. Suchfeld filtert in Echtzeit nach Name und Unternehmen (rund ein Drittel der Zeilenbreite).
 
-Desktop: Tabelle mit Spalten Name, Gastgeber, Check-in, Check-out, Notizen, Erfasst durch, Aktionen (Status-Badge nur im Tab „Alle", da in den übrigen Tabs redundant zum Tab selbst). Jenseits der ersten 10 Einträge werden Tageskopfzeilen („Heute"/„Gestern"/Datum) eingezogen.  
+**Tages-Filter:** Bei den Tabs „Anwesend" und „Ausgecheckt" steht ein Datumsfeld zur Verfügung (Standard: heute) — zeigt „Anwesend" nach Check-in-Datum bzw. „Ausgecheckt" nach Check-out-Datum gefiltert; ein „Heute"-Link setzt zurück. Die Tabs „Vorregistriert" und „Abgesagt" sind bewusst **nicht** tagesgefiltert — offene bzw. abgesagte Vorregistrierungen sind Aufgaben, keine tagesgebundenen Protokolleinträge, und bleiben unabhängig vom gewählten Datum sichtbar (siehe Nachtrag in Kapitel 17).
+
+Desktop: Tabelle mit Spalten Name, Gastgeber, Check-in, Check-out, Notizen, Erfasst durch, Aktionen.  
 Mobil: Karten-Layout mit denselben Informationen und Touch-freundlichen Buttons.
 
 Aktionen je nach Zeilen-Typ:
 - **Anwesend:** „Auschecken" (mit Bestätigungsdialog)
 - **Ausgecheckt, heute:** zusätzlich „Rückgängig" (`POST /visits/:id/reactivate`)
 - **Vorregistriert:** „Einchecken" (mit korrigierbarer Uhrzeit) und — nur für den zugeordneten Gastgeber oder Admin — „Absagen"
-- **Admin:** zusätzlich „Löschen" (Besucher dauerhaft löschen)
+- **Abgesagt:** nur für Admin sichtbar — „Löschen" (endgültig)
+- **Admin:** zusätzlich „Löschen" bei Besuchen (Besucher dauerhaft löschen)
 
-Kopfbereich bietet zwei Aktionen: **„Einchecken"** (Direkt-Check-in) und **„Vorregistrieren"** (Formular für zukünftige Besuche).
+Kopfbereich bietet zwei Aktionen: **„Einchecken"** (Direkt-Check-in) und **„Vorregistrieren"** (Formular für zukünftige Besuche; Gastgeber optional — entweder per AD-Suche oder manuell als Freitext, falls kein AD-Treffer oder noch kein Gastgeber feststeht).
 
 ---
 
@@ -784,8 +791,8 @@ Kopfbereich bietet zwei Aktionen: **„Einchecken"** (Direkt-Check-in) und **„
    - Unternehmen (optional)
    - Gastgeber/Ansprechpartner* (Live-Suche gegen das Active Directory ab 3 Zeichen)
    - Check-in-Datum & -Uhrzeit* (vorbelegt mit „jetzt", änderbar)
-   - Notizen* (Pflichtfeld, in der Besucherliste sichtbar)
-   - Checkbox: „Der Besucher wurde auf die Datenschutzerklärung hingewiesen."*
+   - Notizen (optional, aber in der Besucherliste sichtbar)
+   - Checkbox: „Der Besucher wurde auf die [Datenschutzerklärung](https://www.abat.de/datenschutz) hingewiesen."*
 4. Absenden → Backend legt `visitor` + `visit` an, setzt `checked_in_by = ID des eingeloggten Users`; Gastgeber wird per E-Mail gefunden/angelegt
 5. Besucher erscheint sofort in der Liste mit **„Erfasst am [Zeit] durch [Name]"**
 6. Ist eine Gastgeber-E-Mail vorhanden und die Benachrichtigung aktiv, erhält der Gastgeber eine Ankunfts-Mail
@@ -805,8 +812,8 @@ Für Besucher, die im Voraus angekündigt sind (z.B. Termine, Bewerbungsgespräc
 **Ablauf:**
 
 1. Mitarbeiter öffnet **Besucher → „Vorregistrieren"**
-2. Formular ausfüllen: Name, Unternehmen (optional), Gastgeber (AD-Autocomplete), Datum (optional), Uhrzeit (optional), Notizen*
-3. Eintrag erscheint im Tab **„Vorregistriert"**
+2. Formular ausfüllen: Name, Unternehmen (optional), Gastgeber (AD-Autocomplete **oder** manuelle Freitext-Eingabe, falls kein AD-Treffer — beides optional), Datum (optional), Uhrzeit (optional), Notizen (optional)
+3. Eintrag erscheint im Tab **„Vorregistriert"** — unabhängig vom gerade gewählten Tages-Filter, solange er offen ist
 4. Wenn Besucher ankommt: irgendein eingeloggter Mitarbeiter klickt **„Einchecken"** bei dem Eintrag — die vorbelegte Uhrzeit lässt sich im Dialog per Scrollen/Chevron-Buttons leicht korrigieren
 5. Backend erstellt `visit` (inkl. der hinterlegten Notiz), setzt `checked_in_by = aktueller User`, Status → `checked_in`
 6. Eintrag wandert in den Tab **„Anwesend"**; der Gastgeber erhält ggf. eine Ankunfts-Mail
@@ -1098,6 +1105,16 @@ In der Live-Datenbank existieren zwei Accounts mit generisch wirkenden Namen: `a
 - **Audit-Log-Pfad korrigiert:** `backend/src/services/audit-log.js` zeigte auf `/opt/visitor-mgmt/logs` (Schwesterprojekt-Pfad statt `-abatplus`) — dieselbe Fehlerklasse wie der bereits behobene Backup-Skript-Bug. Zeigt jetzt korrekt auf `/opt/visitor-mgmt-abatplus/logs`.
 - **Neues App-only-Verzeichniskonto:** separat von der SSO-App-Registrierung, ausschließlich mit Application Permissions (`User.Read.All`, `Mail.Send`) — kompromittiert das SSO-Client-Secret nicht automatisch den Verzeichniszugriff. Details in Kapitel 7.
 - **Absage-Berechtigung für Vorregistrierungen verschärft:** Bisher konnte jeder eingeloggte Mitarbeiter eine fremde Vorregistrierung stornieren. Jetzt nur noch der zugeordnete Gastgeber (E-Mail-Match) oder ein Admin.
+
+### Korrekturen nach erstem Nutzertest (Juli 2026)
+
+- **Notizen sind wieder optional** (Check-in und Vorregistrierung) — die Pflichtfeld-Anforderung aus dem ersten Durchgang wurde zurückgenommen.
+- **„Alle"-Tab entfernt, „Abgesagt"-Tab ergänzt:** Die Besucherliste zeigt jetzt **Vorregistriert · Anwesend · Ausgecheckt · Abgesagt**.
+- **Tages-Filter ergänzt** (`GET /visitors?date=`, Standard: heute) für die Tabs „Anwesend"/„Ausgecheckt".
+- **Bug behoben (gemeldet nach erstem Test):** Der Tages-Filter wurde zunächst versehentlich auch auf „Vorregistriert" angewendet und verglich `expected_date` exakt statt „ab heute" — dadurch verschwanden Vorregistrierungen mit einem Datum ungleich dem gefilterten Tag komplett aus der Liste, obwohl das Dashboard sie weiterhin als „offen" zählte (`dashboard.js` zählt `expected_date >= heute`, unabhängig vom UI-Tages-Filter). Die Tabs „Vorregistriert" und „Abgesagt" ignorieren den Tages-Filter jetzt bewusst vollständig — offene bzw. abgesagte Vorregistrierungen sind Aufgaben, keine tagesgebundenen Protokolleinträge.
+- **Absagen vs. endgültig Löschen entkoppelt:** `DELETE /preregistrations/:id` storniert jetzt bei `status=pending` immer zuerst (`cancelled`, sichtbar im neuen „Abgesagt"-Tab) — auch für Admins, die vorher direkt hart gelöscht haben. Erst ein zweiter Aufruf auf einen bereits abgesagten Eintrag löscht endgültig (nur Admin).
+- **Manuelle Gastgeber-Eingabe bei Vorregistrierung:** Ist kein passender AD-Treffer vorhanden, kann der Gastgeber als Freitext eingegeben werden (`findOrCreateManualHost()` in `hosts-helper.js`, dedupliziert nur per Namensgleichheit, da keine E-Mail vorliegt).
+- **Suchfeld schmaler:** ca. ein Drittel der Zeilenbreite statt voller Breite, um Platz für den neuen Tages-Filter zu schaffen.
 
 ---
 

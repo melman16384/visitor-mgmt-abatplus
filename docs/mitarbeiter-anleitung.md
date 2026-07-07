@@ -20,8 +20,8 @@ Dein Besucher ist gerade angekommen? So gehst du vor:
    - **Unternehmen** (optional)
    - **Gastgeber** — tippe mind. 3 Buchstaben und wähle aus der Liste (Suche direkt im Firmenverzeichnis)
    - **Datum & Uhrzeit** — sind bereits mit „jetzt" ausgefüllt, kannst du bei Bedarf ändern
-   - **Notizen** — Pflichtfeld, z.B. Grund des Besuchs
-   - Setze den Haken bei **„Der Besucher wurde auf die Datenschutzerklärung hingewiesen"**
+   - **Notizen** — optional, z.B. Grund des Besuchs
+   - Setze den Haken bei **„Der Besucher wurde auf die [Datenschutzerklärung](https://www.abat.de/datenschutz) hingewiesen"**
 3. Klicke auf **„Einchecken"**
 
 Der Besucher erscheint sofort in der Liste mit deinem Namen als Erfasser. Der Gastgeber erhält ggf. automatisch eine Mail, dass sein Besuch eingetroffen ist.
@@ -33,7 +33,7 @@ Der Besucher erscheint sofort in der Liste mit deinem Namen als Erfasser. Der Ga
 Wenn dein Besucher das Gebäude verlässt:
 
 1. Gehe zur Seite **„Besucher"**
-2. Suche den Besucher in der Liste (Tab **„Anwesend"**)
+2. Suche den Besucher in der Liste (Tab **„Anwesend"**) — mit dem Datumsfeld kannst du bei Bedarf auf einen anderen Tag wechseln, Standard ist immer heute
 3. Klicke auf **„Auschecken"** und bestätige im Dialog noch einmal
 
 > Alternativ werden alle noch anwesenden Besucher automatisch um **20:00 Uhr** ausgecheckt.
@@ -47,12 +47,12 @@ Aus Versehen ausgecheckt? Solange es derselbe Tag ist, findest du im Tab **„Au
 Du weißt schon im Voraus, dass jemand kommt? Trage ihn vorab ein:
 
 1. Gehe zur Seite **„Besucher"** und klicke auf **„Vorregistrieren"**
-2. Fülle Name, Gastgeber (Verzeichnis-Suche), Datum (optional) und Notizen aus
-3. Klicke auf **„Erstellen"** — der Eintrag erscheint im Tab **„Vorregistriert"**
+2. Fülle Name, Gastgeber (Verzeichnis-Suche — findest du den Gastgeber nicht, kannst du über „Manuell eingeben" auch einfach den Namen eintippen), Datum (optional) und Notizen (optional) aus
+3. Klicke auf **„Erstellen"** — der Eintrag erscheint im Tab **„Vorregistriert"** und bleibt dort sichtbar, unabhängig vom gerade eingestellten Datum
 
 Wenn der Besucher ankommt — egal welcher Kollege gerade am Empfang ist — einfach im Tab „Vorregistriert" auf **„Einchecken"** klicken; die Uhrzeit lässt sich dabei noch per Scrollen leicht anpassen. Das System speichert automatisch, wer eingecheckt hat.
 
-Passt ein Termin doch nicht mehr? Der zugeordnete Gastgeber oder ein Administrator kann über **„Absagen"** die Vorregistrierung stornieren.
+Passt ein Termin doch nicht mehr? Der zugeordnete Gastgeber oder ein Administrator kann über **„Absagen"** die Vorregistrierung stornieren — sie wandert dann in den Tab **„Abgesagt"** (dort kann ein Administrator sie bei Bedarf auch endgültig löschen).
 
 ---
 

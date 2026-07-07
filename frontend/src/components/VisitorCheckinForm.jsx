@@ -31,7 +31,6 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
     e.preventDefault();
     if (!form.privacy_accepted) { setError('Bitte Datenschutzerklärung bestätigen.'); return; }
     if (!host) { setError('Bitte Gastgeber auswählen.'); return; }
-    if (!form.notes.trim()) { setError('Bitte Notizen eintragen.'); return; }
     setError('');
     setLoading(true);
     try {
@@ -121,19 +120,29 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notizen *</label>
-            <textarea name="notes" value={form.notes} onChange={handleChange} required rows={2} className={`${inp} resize-none`} placeholder="Grund des Besuchs, Besonderheiten…" />
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notizen</label>
+            <textarea name="notes" value={form.notes} onChange={handleChange} rows={2} className={`${inp} resize-none`} placeholder="Optional — Grund des Besuchs, Besonderheiten…" />
           </div>
 
-          <label className="flex items-start gap-3 cursor-pointer p-3.5 bg-blue-50 rounded-xl border border-blue-100">
+          <div className="flex items-start gap-3 p-3.5 bg-blue-50 rounded-xl border border-blue-100">
             <input
-              type="checkbox" name="privacy_accepted" checked={form.privacy_accepted} onChange={handleChange}
+              type="checkbox" id="privacy_accepted" name="privacy_accepted" checked={form.privacy_accepted} onChange={handleChange}
               className="mt-0.5 w-5 h-5 rounded border-gray-300 text-abat-blau focus:ring-abat-blau flex-shrink-0 cursor-pointer"
             />
-            <span className="text-sm text-gray-700 leading-snug">
-              Der Besucher wurde auf die <strong className="text-gray-900">Datenschutzerklärung</strong> hingewiesen. *
-            </span>
-          </label>
+            <label htmlFor="privacy_accepted" className="text-sm text-gray-700 leading-snug cursor-pointer">
+              Der Besucher wurde auf die{' '}
+              <a
+                href="https://www.abat.de/datenschutz"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="underline font-semibold text-gray-900 hover:text-abat-blau"
+              >
+                Datenschutzerklärung
+              </a>{' '}
+              hingewiesen. *
+            </label>
+          </div>
         </form>
 
         {/* Sticky footer buttons */}

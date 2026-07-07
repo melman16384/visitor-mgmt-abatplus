@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { log } = require('../services/audit-log');
-const { findOrCreateHostByEmail } = require('../services/hosts-helper');
+const { findOrCreateHostByEmail, findOrCreateManualHost } = require('../services/hosts-helper');
 const { notifyHostOfArrival } = require('../services/notify-host');
 
 const router = express.Router();
@@ -17,6 +17,7 @@ function resolveHostId(body) {
   const { host_id, host_name, host_email, host_ad_object_id } = body;
   if (host_id) return host_id;
   if (host_email) return findOrCreateHostByEmail(host_name || host_email, host_email, host_ad_object_id).id;
+  if (host_name) return findOrCreateManualHost(host_name).id;
   return null;
 }
 
@@ -39,16 +40,13 @@ router.post('/', authenticate, (req, res) => {
   if (!visitor_first_name || !visitor_last_name) {
     return res.status(400).json({ error: 'Vor- und Nachname erforderlich' });
   }
-  if (!notes || !notes.trim()) {
-    return res.status(400).json({ error: 'Notizen sind erforderlich' });
-  }
 
   const hostId = resolveHostId(req.body);
 
   const result = db.prepare(`
     INSERT INTO preregistrations (visitor_first_name, visitor_last_name, visitor_company, host_id, expected_date, expected_time, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(visitor_first_name, visitor_last_name, visitor_company || null, hostId, expected_date || null, expected_time || null, notes.trim());
+  `).run(visitor_first_name, visitor_last_name, visitor_company || null, hostId, expected_date || null, expected_time || null, notes ? notes.trim() : null);
 
   const prereg = db.prepare(`${SELECT} WHERE p.id = ?`).get(result.lastInsertRowid);
   try { log('VORREGISTRIERUNG', req.user.name, `${visitor_first_name} ${visitor_last_name}`); } catch {}
@@ -107,23 +105,29 @@ router.post('/:id/checkin', authenticate, (req, res) => {
   res.json({ visitor, visit });
 });
 
-// DELETE /:id — admin: permanent delete; zugeordneter Gastgeber: storniert; sonst 403
+// DELETE /:id — bei offener (pending) Vorregistrierung: Absagen (Status → cancelled),
+// erlaubt für Admin oder zugeordneten Gastgeber. Bei bereits abgesagter Vorregistrierung:
+// endgültiges Löschen, nur Admin.
 router.delete('/:id', authenticate, (req, res) => {
   const prereg = db.prepare(`${SELECT} WHERE p.id = ?`).get(req.params.id);
   if (!prereg) return res.status(404).json({ error: 'Vorregistrierung nicht gefunden' });
 
-  if (req.user.role === 'admin') {
-    db.prepare('DELETE FROM preregistrations WHERE id = ?').run(req.params.id);
-    return res.json({ message: 'Vorregistrierung gelöscht' });
-  }
-
+  const isAdmin = req.user.role === 'admin';
   const isAssignedHost = prereg.host_email && prereg.host_email.toLowerCase() === req.user.email.toLowerCase();
-  if (!isAssignedHost) {
-    return res.status(403).json({ error: 'Nur der zugeordnete Gastgeber oder ein Administrator kann absagen' });
+
+  if (prereg.status === 'pending') {
+    if (!isAdmin && !isAssignedHost) {
+      return res.status(403).json({ error: 'Nur der zugeordnete Gastgeber oder ein Administrator kann absagen' });
+    }
+    db.prepare("UPDATE preregistrations SET status = 'cancelled' WHERE id = ?").run(req.params.id);
+    return res.json({ message: 'Vorregistrierung storniert' });
   }
 
-  db.prepare("UPDATE preregistrations SET status = 'cancelled' WHERE id = ?").run(req.params.id);
-  res.json({ message: 'Vorregistrierung storniert' });
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Nur ein Administrator kann endgültig löschen' });
+  }
+  db.prepare('DELETE FROM preregistrations WHERE id = ?').run(req.params.id);
+  res.json({ message: 'Vorregistrierung gelöscht' });
 });
 
 module.exports = router;

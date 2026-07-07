@@ -4,8 +4,10 @@ import api from '../api/client';
 
 // Sucht Gastgeber live im Active Directory (ab 3 Zeichen). Beim Auswählen wird
 // {name, email, ad_object_id} an onSelect übergeben — der Host wird serverseitig
-// beim Absenden des Formulars per E-Mail angelegt/gefunden.
-export default function HostAutocomplete({ value, onSelect, placeholder = 'Name oder E-Mail…' }) {
+// beim Absenden des Formulars per E-Mail angelegt/gefunden. Mit allowManual=true
+// kann alternativ ein Gastgeber ohne AD-Treffer frei eingegeben werden (kein E-Mail-Abgleich).
+export default function HostAutocomplete({ value, onSelect, placeholder = 'Name oder E-Mail…', allowManual = false }) {
+  const [manualMode, setManualMode] = useState(false);
   const [query, setQuery] = useState(value?.name || '');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -13,6 +15,26 @@ export default function HostAutocomplete({ value, onSelect, placeholder = 'Name 
   const [notConfigured, setNotConfigured] = useState(false);
   const timer = useRef(null);
   const wrapperRef = useRef(null);
+
+  if (manualMode) {
+    return (
+      <div>
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); onSelect(e.target.value.trim() ? { name: e.target.value, email: null, ad_object_id: null } : null); }}
+          placeholder="Name des Gastgebers…"
+          className="w-full px-3 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-abat-blau focus:ring-1 focus:ring-abat-blau bg-white"
+        />
+        <button
+          type="button"
+          onClick={() => { setManualMode(false); setQuery(''); onSelect(null); }}
+          className="mt-1.5 text-xs text-abat-blau hover:underline"
+        >
+          Zurück zur Verzeichnis-Suche
+        </button>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const handler = (e) => {
@@ -92,6 +114,16 @@ export default function HostAutocomplete({ value, onSelect, placeholder = 'Name 
             </button>
           ))}
         </div>
+      )}
+
+      {allowManual && (
+        <button
+          type="button"
+          onClick={() => { setManualMode(true); setQuery(''); setOpen(false); onSelect(null); }}
+          className="mt-1.5 text-xs text-gray-500 hover:text-abat-blau hover:underline"
+        >
+          Gastgeber nicht im Verzeichnis? Manuell eingeben
+        </button>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Users, LogOut, Trash2, UserPlus, CalendarPlus, LogIn, Undo2, Ban } from 'lucide-react';
-import { format, isToday, isYesterday } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import { de } from 'date-fns/locale';
 import api from '../api/client';
 import { showToast } from '../components/Layout';
@@ -10,12 +10,6 @@ import HostAutocomplete from '../components/HostAutocomplete';
 import ConfirmDialog from '../components/ConfirmDialog';
 import TimeAdjuster from '../components/TimeAdjuster';
 import Modal from '../components/Modal';
-
-function StatusBadge({ status }) {
-  if (status === 'active') return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"><span className="w-1.5 h-1.5 rounded-full bg-green-500" />Anwesend</span>;
-  if (status === 'vorregistriert') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">Vorregistriert</span>;
-  return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">Ausgecheckt</span>;
-}
 
 function Avatar({ first, last }) {
   return (
@@ -29,41 +23,13 @@ function isPrereg(row) {
   return !!row.prereg_id;
 }
 
-function dayKey(row) {
-  const ts = row.checked_in_at || row.checked_out_at || (row.expected_date ? `${row.expected_date}T${row.expected_time || '00:00'}` : row.created_at);
-  return ts ? ts.split('T')[0] : null;
-}
-
-function dayLabel(dateStr) {
-  const d = new Date(`${dateStr}T12:00:00`);
-  if (isToday(d)) return 'Heute';
-  if (isYesterday(d)) return 'Gestern';
-  return format(d, 'dd.MM.yyyy', { locale: de });
-}
-
-// Jenseits der ersten 10 Einträge werden Tageskopfzeilen eingezogen, damit ältere
-// Aktivitäten tageweise statt als endlose flache Liste durchsucht werden.
-function withDayHeaders(rows) {
-  const out = [];
-  let lastDay = null;
-  rows.forEach((row, idx) => {
-    if (idx >= 10) {
-      const key = dayKey(row);
-      if (key !== lastDay) {
-        out.push({ __header: true, key: `h-${key}-${idx}`, label: key ? dayLabel(key) : 'Unbekanntes Datum' });
-        lastDay = key;
-      }
-    }
-    out.push(row);
-  });
-  return out;
-}
-
 function canCancelPrereg(row, user) {
   if (!user) return false;
   if (user.role === 'admin') return true;
   return !!(row.host_email && row.host_email.toLowerCase() === user.email.toLowerCase());
 }
+
+const todayStr = () => format(new Date(), 'yyyy-MM-dd');
 
 // ---- Vorregistrierung anlegen ----
 const emptyPreregForm = { visitor_first_name: '', visitor_last_name: '', visitor_company: '', expected_date: '', expected_time: '', notes: '' };
@@ -78,7 +44,6 @@ function PreRegFormModal({ onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.notes.trim()) { setError('Bitte Notizen eintragen.'); return; }
     setError('');
     setLoading(true);
     try {
@@ -115,8 +80,8 @@ function PreRegFormModal({ onClose, onSuccess }) {
           <input value={form.visitor_company} onChange={e => setForm(f => ({ ...f, visitor_company: e.target.value }))} className={inp} placeholder="Optional" />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Gastgeber *</label>
-          <HostAutocomplete value={host} onSelect={setHost} />
+          <label className="block text-xs font-semibold text-gray-700 mb-1">Gastgeber</label>
+          <HostAutocomplete value={host} onSelect={setHost} allowManual />
         </div>
         <div>
           <div className="flex items-baseline justify-between mb-1">
@@ -129,8 +94,8 @@ function PreRegFormModal({ onClose, onSuccess }) {
           </div>
         </div>
         <div>
-          <label className="block text-xs font-semibold text-gray-700 mb-1">Notizen *</label>
-          <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} required rows={2} className={`${inp} resize-none`} />
+          <label className="block text-xs font-semibold text-gray-700 mb-1">Notizen</label>
+          <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className={`${inp} resize-none`} placeholder="Optional" />
         </div>
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Abbrechen</button>
@@ -190,24 +155,24 @@ export default function Visitors() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [date, setDate] = useState(todayStr);
   const [showCheckin, setShowCheckin] = useState(false);
   const [showPrereg, setShowPrereg] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState(null);
   const [checkinPreregTarget, setCheckinPreregTarget] = useState(null);
   const limit = 25;
 
-  const statusParam = { active: 'active', checkedout: 'completed', vorregistriert: 'vorregistriert', all: '' }[activeTab];
+  const statusParam = { vorregistriert: 'vorregistriert', active: 'active', checkedout: 'completed', cancelled: 'cancelled' }[activeTab];
 
   const load = useCallback(() => {
-    const params = new URLSearchParams({ page, limit, search });
-    if (statusParam) params.set('status', statusParam);
+    const params = new URLSearchParams({ page, limit, search, date, status: statusParam });
     api.get(`/visitors?${params}`).then(r => {
       setVisitors(r.data.visitors || r.data);
       setTotal(r.data.total || 0);
     }).catch(() => {});
-  }, [activeTab, page, search]);
+  }, [activeTab, page, search, date]);
 
-  useEffect(() => { setPage(1); }, [activeTab, search]);
+  useEffect(() => { setPage(1); }, [activeTab, search, date]);
   useEffect(() => { load(); }, [load]);
 
   const handleCheckoutConfirmed = async () => {
@@ -242,6 +207,17 @@ export default function Visitors() {
     }
   };
 
+  const handleDeleteCancelledPrereg = async (id) => {
+    if (!confirm('Vorregistrierung endgültig löschen?')) return;
+    try {
+      const res = await api.delete(`/preregistrations/${id}`);
+      showToast(res.data.message || 'Gelöscht');
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler', 'error');
+    }
+  };
+
   const handleDelete = async (visitorId) => {
     if (!confirm('Besucher dauerhaft löschen?')) return;
     try {
@@ -254,16 +230,29 @@ export default function Visitors() {
   };
 
   const tabs = [
-    { key: 'active', label: 'Anwesend' },
     { key: 'vorregistriert', label: 'Vorregistriert' },
+    { key: 'active', label: 'Anwesend' },
     { key: 'checkedout', label: 'Ausgecheckt' },
-    { key: 'all', label: 'Alle' },
+    { key: 'cancelled', label: 'Abgesagt' },
   ];
-
-  const displayRows = withDayHeaders(visitors);
 
   const renderActions = (v, mobile = false) => {
     if (isPrereg(v)) {
+      if (v.visit_status === 'abgesagt') {
+        if (user?.role !== 'admin') return null;
+        return (
+          <button
+            onClick={() => handleDeleteCancelledPrereg(v.prereg_id)}
+            className={mobile
+              ? 'flex-1 flex items-center justify-center gap-2 py-3 text-red-400 text-sm font-semibold active:bg-red-50 transition-colors'
+              : 'p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors'}
+          >
+            <Trash2 size={mobile ? 16 : 15} />
+            {mobile && 'Löschen'}
+          </button>
+        );
+      }
+
       const canCancel = canCancelPrereg(v, user);
       return (
         <>
@@ -355,25 +344,45 @@ export default function Visitors() {
         </div>
       </div>
 
-      {/* Tabs + Search */}
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl self-start flex-wrap w-fit">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === t.key ? 'bg-white text-abat-blau shadow-sm' : 'text-gray-500'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tag-Filter + Suche */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl self-start flex-wrap">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === t.key ? 'bg-white text-abat-blau shadow-sm' : 'text-gray-500'}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 relative">
+        {(activeTab === 'active' || activeTab === 'checkedout') && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="px-3 py-3 md:py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-abat-blau"
+            />
+            {date !== todayStr() && (
+              <button
+                onClick={() => setDate(todayStr())}
+                className="px-3 py-2 text-xs font-semibold text-abat-blau hover:underline whitespace-nowrap"
+              >
+                Heute
+              </button>
+            )}
+          </div>
+        )}
+        <div className="relative sm:w-1/3">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Name oder Unternehmen suchen…"
+            placeholder="Name oder Unternehmen…"
             className="w-full pl-9 pr-4 py-3 md:py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-abat-blau"
           />
         </div>
@@ -408,18 +417,13 @@ export default function Visitors() {
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check-out</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Notizen</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Erfasst durch</th>
-              {activeTab === 'all' && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>}
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Aktionen</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {displayRows.length === 0 ? (
-              <tr><td colSpan={8} className="py-12 text-center text-gray-400">Keine Einträge</td></tr>
-            ) : displayRows.map(v => v.__header ? (
-              <tr key={v.key} className="bg-gray-50">
-                <td colSpan={8} className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">{v.label}</td>
-              </tr>
-            ) : (
+            {visitors.length === 0 ? (
+              <tr><td colSpan={7} className="py-12 text-center text-gray-400">Keine Einträge</td></tr>
+            ) : visitors.map(v => (
               <tr key={isPrereg(v) ? `p${v.prereg_id}` : `v${v.id}-${v.visit_id}`} className="hover:bg-gray-50/50 transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -441,7 +445,6 @@ export default function Visitors() {
                 </td>
                 <td className="px-4 py-3 text-gray-500 max-w-[16rem] truncate" title={v.notes || ''}>{v.notes || '–'}</td>
                 <td className="px-4 py-3 text-gray-600">{v.checked_in_by_name || '–'}</td>
-                {activeTab === 'all' && <td className="px-4 py-3"><StatusBadge status={v.visit_status} /></td>}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2 justify-end">
                     {renderActions(v)}
@@ -455,14 +458,12 @@ export default function Visitors() {
 
       {/* Mobile Card View */}
       <div className="md:hidden space-y-2.5">
-        {displayRows.length === 0 ? (
+        {visitors.length === 0 ? (
           <div className="bg-white rounded-2xl p-10 text-center text-gray-400 text-sm shadow-sm border border-gray-100">
             <Users size={32} className="mx-auto mb-3 opacity-25" />
             Keine Einträge
           </div>
-        ) : displayRows.map(v => v.__header ? (
-          <p key={v.key} className="px-1 pt-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">{v.label}</p>
-        ) : (
+        ) : visitors.map(v => (
           <div key={isPrereg(v) ? `p${v.prereg_id}` : `v${v.id}-${v.visit_id}`} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             {/* Card header */}
             <div className="px-4 pt-4 pb-3 flex items-center gap-3">
@@ -471,7 +472,6 @@ export default function Visitors() {
                 <p className="font-bold text-gray-900 leading-tight">{v.first_name} {v.last_name}</p>
                 {v.company && <p className="text-xs text-gray-400 truncate mt-0.5">{v.company}</p>}
               </div>
-              {activeTab === 'all' && <StatusBadge status={v.visit_status} />}
             </div>
 
             {/* Meta row */}
