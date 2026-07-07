@@ -1,6 +1,11 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -8,7 +13,7 @@ function authenticate(req, res, next) {
   }
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    const payload = jwt.verify(token, JWT_SECRET);
     const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ? AND active = 1').get(payload.userId);
     if (!user) return res.status(401).json({ error: 'Benutzer nicht gefunden' });
     req.user = user;

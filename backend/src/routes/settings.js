@@ -14,7 +14,7 @@ router.get('/', ...adminOnly, getSettings);
 router.get('/system', ...adminOnly, getSettings);
 
 const putSettings = (req, res) => {
-  const allowed = ['auto_checkout_enabled', 'auto_checkout_time', 'data_retention_days'];
+  const allowed = ['auto_checkout_enabled', 'auto_checkout_time', 'data_retention_days', 'notify_host_on_arrival'];
   const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
   const tx = db.transaction((updates) => {
     for (const [key, value] of Object.entries(updates)) {

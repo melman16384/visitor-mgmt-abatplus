@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOG_DIR = '/opt/visitor-mgmt/logs';
+const LOG_DIR = '/opt/visitor-mgmt-abatplus/logs';
 const RETENTION_DAYS = 90;
 
 function ensureLogDir() {

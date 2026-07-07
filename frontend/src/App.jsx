@@ -5,8 +5,6 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Visitors from './pages/Visitors';
-import Hosts from './pages/Hosts';
-import PreRegistration from './pages/PreRegistration';
 import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
 import AuthCallback from './pages/AuthCallback';
@@ -27,8 +25,8 @@ function AppRoutes() {
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/visitors" element={<Visitors />} />
-        <Route path="/hosts" element={<Hosts />} />
-        <Route path="/preregistrations" element={<PreRegistration />} />
+        <Route path="/preregistrations" element={<Navigate to="/visitors" replace />} />
+        <Route path="/hosts" element={<Navigate to="/dashboard" replace />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<NotFound />} />

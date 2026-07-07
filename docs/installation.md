@@ -208,6 +208,33 @@ Bereits bestehende Accounts können sich weiterhin unabhängig von dieser Einste
 
 > **Empfehlung:** Sobald die Ziel-Domain(s) für den Produktivbetrieb feststehen, `SSO_ALLOWED_DOMAINS` setzen — das verhindert, dass sich versehentlich Konten aus fremden, im selben Azure-Tenant befindlichen Domains automatisch anlegen.
 
+### Optional: App-only Verzeichniszugriff (Gastgeber-Autocomplete, Admin-Gegencheck, Mail-Benachrichtigung)
+
+Für die Gastgeber-Autocomplete beim Check-in, den Admin-Gegencheck (Einstellungen → Gastgeber) und die Ankunfts-Mail an den Gastgeber wird eine **zweite, von der SSO-App getrennte** Azure-App-Registrierung benötigt (Client-Credentials-Flow, kein Nutzerkontext — Least-Privilege gegenüber der interaktiven SSO-App).
+
+1. **Azure Portal → Microsoft Entra ID → App-Registrierungen → Neue Registrierung** (z.B. `abat+ Besucherverwaltung – Verzeichnis`, kein Redirect-URI nötig)
+2. **Zertifikate & Geheimnisse** → neues Client Secret erstellen, Wert sofort kopieren
+3. **API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Anwendungsberechtigungen (nicht delegiert):**
+   - `User.Read.All`
+   - `Mail.Send`
+4. **Administratorzustimmung erteilen** (zwingend bei Anwendungsberechtigungen)
+5. Werte in `.env` eintragen:
+
+```env
+AZURE_DIRECTORY_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+AZURE_DIRECTORY_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+AZURE_DIRECTORY_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Postfach, das als Absender für Gastgeber-Ankunfts-Mails dient (muss im Tenant existieren)
+NOTIFY_FROM_EMAIL=besucher@deine-domain.de
+```
+
+```bash
+pm2 restart visitor-mgmt --update-env
+```
+
+> **Ohne diese Konfiguration** bleibt die App voll nutzbar — Gastgeber-Autocomplete und Admin-Gegencheck liefern `503` (analog zum SSO-Verhalten), der Mailversand wird still übersprungen. Gastgeber lassen sich in diesem Fall nur über bereits lokal bekannte Einträge zuordnen (z.B. aus vorherigen SSO-Logins).
+
 ---
 
 ## 6. Frontend bauen

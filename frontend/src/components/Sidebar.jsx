@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, UserCheck, CalendarCheck, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
-  { to: '/dashboard',        label: 'Dashboard',          short: 'Dashboard',  icon: LayoutDashboard },
-  { to: '/visitors',         label: 'Besucher',           short: 'Besucher',   icon: Users },
-  { to: '/preregistrations', label: 'Vorregistrierungen', short: 'Voranmeld.', icon: CalendarCheck },
-  { to: '/hosts',            label: 'Gastgeber',          short: 'Gastgeb.',   icon: UserCheck },
+  { to: '/dashboard', label: 'Dashboard', short: 'Dashboard', icon: LayoutDashboard },
+  { to: '/visitors',  label: 'Besucher',  short: 'Besucher',  icon: Users },
 ];
 const ADMIN_ITEMS = [
   { to: '/settings', label: 'Einstellungen', short: 'Einstellg.', icon: Settings },

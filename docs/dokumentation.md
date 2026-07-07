@@ -1,6 +1,6 @@
 # Besucherverwaltung abat+ — Projektdokumentation
 
-> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 6. Juli 2026 (Security-Hardening-Durchgang)  
+> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 7. Juli 2026 (Merge Besucher/Vorregistrierung, AD-Gastgeber, Mail-Benachrichtigung)  
 > Kunde: **abat AG**  
 > URL: https://visitorplus.luwilab.work  
 > Repository: https://github.com/melman16384/visitor-mgmt-abatplus  
@@ -49,15 +49,21 @@ Schlanke, mitarbeitergesteuerte Besucherverwaltung, entwickelt ausschließlich f
 
 | Feature | Beschreibung |
 |---|---|
-| Check-in | Mitarbeiter checkt Besucher über ein einfaches Formular ein |
-| Check-out | Manuell per Klick oder automatisch zur konfigurierten Uhrzeit |
+| Check-in | Mitarbeiter checkt Besucher über ein einfaches Formular ein; Check-in-Datum/-Uhrzeit sind vorbelegt (jetzt), aber änderbar |
+| Check-out | Manuell per Klick mit Bestätigungsdialog, oder automatisch zur konfigurierten Uhrzeit |
+| Checkout rückgängig | Ein am selben Tag ausgecheckter Besuch kann per Klick reaktiviert werden |
 | „Erfasst durch" | Speichert Name + Zeitstempel des einchecke­nden Mitarbeiters |
-| Vorregistrierungen | Besucher vorab eintragen; bei Ankunft per Klick einchecken |
+| Gemeinsame Besucherliste | Vorregistrierung, Anwesend, Ausgecheckt und Alle sind Status **einer** Liste (`/visitors`) — keine getrennte Datenpflege |
+| Vorregistrierungen | Besucher vorab eintragen (in der Besucherliste integriert); bei Ankunft per Klick einchecken, Uhrzeit dabei leicht korrigierbar |
+| Gastgeber aus Active Directory | Autocomplete ab 3 Zeichen gegen das Firmen-AD (separates App-only-Verzeichniskonto); lokale Gastgeber-Verwaltungsseite entfällt |
+| Gastgeber-Benachrichtigung | Optionale Mail an den Gastgeber bei Ankunft des Besuchers (Microsoft Graph `sendMail`) |
+| Admin-AD-Gegencheck | Einstellungen → Gastgeber: prüft lokale Gastgeber-Einträge gegen das Verzeichnis |
 | Microsoft SSO | Login mit Firmenkonto; User + Gastgeber-Eintrag automatisch angelegt |
-| Datenschutz-Checkbox | Einfache Bestätigung statt Unterschriftspad |
+| Datenschutzhinweis | Checkbox „Besucher wurde auf die Datenschutzerklärung hingewiesen" statt Unterschriftspad |
+| Notizen | Pflichtfeld beim Check-in/bei der Vorregistrierung, sichtbar in der Besucherliste |
 | Mobil-optimiert | Vollständig responsiv — Handy + Desktop gleichwertig |
 | Auto-Checkout | Täglich zur konfigurierbaren Uhrzeit (Standard: 20:00), abschaltbar |
-| Zwei Rollen | `admin` (Vollzugriff) / `user` (einchecken + lesen) |
+| Zwei Rollen | `admin` (Vollzugriff) / `user` (einchecken + lesen); Vorregistrierung absagen: nur zugeordneter Gastgeber oder Admin |
 
 ### Bewusst nicht enthalten
 
@@ -147,17 +153,20 @@ Browser / Handy (Mitarbeiter)
 │   │   ├── routes/
 │   │   │   ├── auth.js              # POST /login, GET /me, PUT /change-password
 │   │   │   ├── auth-microsoft.js    # GET /microsoft, GET /microsoft/callback (MSAL)
-│   │   │   ├── visitors.js          # Besucher-CRUD, Check-in (POST /)
-│   │   │   ├── visits.js            # Check-out (POST /:id/checkout)
-│   │   │   ├── hosts.js             # Gastgeber-CRUD
+│   │   │   ├── visitors.js          # Besucher-CRUD, Check-in (POST /), gemeinsame Liste inkl. Vorregistrierung
+│   │   │   ├── visits.js            # Check-out (POST /:id/checkout), Rückgängig (POST /:id/reactivate)
+│   │   │   ├── hosts.js             # Gastgeber-CRUD, AD-Suche (/search-ad), Admin-Gegencheck (/:id/ad-check)
 │   │   │   ├── preregistrations.js  # Vorregistrierungen + POST /:id/checkin
 │   │   │   ├── users.js             # Benutzerverwaltung (admin only)
-│   │   │   ├── settings.js          # Auto-Checkout-Einstellungen
+│   │   │   ├── settings.js          # Auto-Checkout-, Retention- und Benachrichtigungs-Einstellungen
 │   │   │   └── dashboard.js         # Statistiken + letzte Aktivitäten
 │   │   ├── services/
 │   │   │   ├── auto-checkout.js     # Täglicher Auto-Checkout per setTimeout
 │   │   │   ├── data-retention.js    # Tägliche Datenlöschung nach Aufbewahrungsfrist
-│   │   │   └── audit-log.js         # Dateibasiertes Audit-Log (optional)
+│   │   │   ├── audit-log.js         # Dateibasiertes Audit-Log (optional)
+│   │   │   ├── graph-directory.js   # App-only Microsoft-Graph-Client (AD-Suche, Gegencheck, Mailversand)
+│   │   │   ├── hosts-helper.js      # findOrCreateHostByEmail() — gemeinsame Gastgeber-Anlage-Logik
+│   │   │   └── notify-host.js       # Best-effort Gastgeber-Mail bei Ankunft
 │   │   └── index.js                 # App-Einstieg, Middleware, Route-Mounting
 │   ├── data/
 │   │   └── visitors.db              # SQLite-Datenbank (nicht in Git)
@@ -170,14 +179,15 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── Login.jsx            # Anmeldeseite (Microsoft-Button + lokaler Fallback)
 │   │   │   ├── AuthCallback.jsx     # Verarbeitet OAuth-Redirect + speichert JWT
 │   │   │   ├── Dashboard.jsx        # Übersicht, Statistiken, Check-in-Button
-│   │   │   ├── Visitors.jsx         # Besucherliste mit Tabs + mobiler Kartenansicht
-│   │   │   ├── Hosts.jsx            # Gastgeberliste
-│   │   │   ├── PreRegistration.jsx  # Vorregistrierungen verwalten + einchecken
-│   │   │   └── Settings.jsx         # Auto-Checkout, Passwort, Benutzerverwaltung
+│   │   │   ├── Visitors.jsx         # Zentrale Besucherliste: Anwesend/Vorregistriert/Ausgecheckt/Alle in einer Ansicht
+│   │   │   └── Settings.jsx         # Auto-Checkout, Datenspeicherung, Passwort, Benutzer, Gastgeber (AD-Gegencheck)
 │   │   ├── components/
 │   │   │   ├── Layout.jsx           # Shell mit Header, Toast-System
-│   │   │   ├── Sidebar.jsx          # Navigation (mobile Burger + Desktop kollabierbar)
+│   │   │   ├── Sidebar.jsx          # Navigation (Dashboard + Besucher, mobile Burger + Desktop kollabierbar)
 │   │   │   ├── VisitorCheckinForm.jsx # Check-in-Modal mit Formular
+│   │   │   ├── HostAutocomplete.jsx # Live-Suche gegen das AD ab 3 Zeichen
+│   │   │   ├── ConfirmDialog.jsx    # Zweistufige Bestätigung (z.B. Auschecken)
+│   │   │   ├── TimeAdjuster.jsx     # Per Scrollen/Chevron korrigierbare Uhrzeit
 │   │   │   ├── Modal.jsx            # Allgemeiner Modal-Wrapper
 │   │   │   └── StatCard.jsx         # Statistik-Karte für Dashboard
 │   │   ├── context/
@@ -240,10 +250,11 @@ Browser / Handy (Mitarbeiter)
 | id | INTEGER PK | |
 | name | TEXT NOT NULL | |
 | email | TEXT | Firmenemail |
-| active | INTEGER | 1 = aktiv, erscheint im Dropdown |
+| active | INTEGER | 1 = aktiv, erscheint in der Autocomplete/Zuordnung |
+| ad_object_id | TEXT | Objekt-ID aus dem Active Directory, falls über SSO-Login oder AD-Autocomplete angelegt |
 | created_at | TEXT | |
 
-> Gastgeber werden bei Microsoft-Login automatisch angelegt. Sie können auch manuell über die Gastgeber-Seite (`/hosts`) gepflegt werden.
+> Gastgeber werden automatisch angelegt — beim Microsoft-Login des Mitarbeiters selbst, oder wenn beim Check-in/bei der Vorregistrierung ein Gastgeber über die AD-Autocomplete ausgewählt wird (`findOrCreateHostByEmail()` in `services/hosts-helper.js`). Es gibt keine eigene Gastgeber-Verwaltungsseite mehr; ein Admin-Gegencheck gegen das Verzeichnis ist unter Einstellungen → Gastgeber möglich (siehe Kapitel 7).
 
 #### `preregistrations` — Vorangemeldete Besucher
 | Spalte | Typ | Beschreibung |
@@ -255,10 +266,12 @@ Browser / Handy (Mitarbeiter)
 | host_id | INTEGER FK | → hosts.id |
 | expected_date | TEXT | YYYY-MM-DD (optional) |
 | expected_time | TEXT | HH:MM (optional) |
-| notes | TEXT | |
+| notes | TEXT | Pflichtfeld bei der Erstellung |
 | status | TEXT | `pending` → `checked_in` oder `cancelled` |
 | created_by | INTEGER FK | → users.id — wer hat vorregistriert |
 | created_at | TEXT | |
+
+> **Migration (Juli 2026):** `expected_date` war in der ursprünglichen Tabellendefinition fälschlich `NOT NULL`, obwohl das Datum laut Formular/Doku optional ist — das führte zu einem Fehler beim Anlegen einer Vorregistrierung ohne Datum. Da SQLite kein `ALTER COLUMN` kennt, migriert `database.js` die Tabelle beim nächsten Start automatisch per Rebuild (Daten bleiben erhalten).
 
 #### `system_settings` — Schlüssel-Wert-Konfiguration
 | Key | Default | Beschreibung |
@@ -266,6 +279,7 @@ Browser / Handy (Mitarbeiter)
 | `auto_checkout_enabled` | `true` | Auto-Checkout aktiv (`true`) oder deaktiviert (`false`) |
 | `auto_checkout_time` | `20:00` | Uhrzeit im Format HH:MM |
 | `data_retention_days` | `365` | Aufbewahrungsdauer in Tagen; `0` = deaktiviert (unbegrenzt) |
+| `notify_host_on_arrival` | `true` | Gastgeber per Mail benachrichtigen, wenn Besucher eintrifft (erfordert konfigurierten Verzeichniszugriff, siehe Kapitel 7) |
 
 ---
 
@@ -377,12 +391,12 @@ Letzte 10 Besuche (neueste zuerst), mit Mitarbeiter und Erfasser.
 ### Besucher
 
 #### `GET /visitors`
-Gibt eine paginierte Besucherliste zurück.
+Gibt eine paginierte, **zusammengeführte** Liste zurück — Besuche und offene Vorregistrierungen in einer Ansicht, keine getrennte Datenpflege in der UI.
 
 **Query-Parameter:**
 | Parameter | Default | Beschreibung |
 |---|---|---|
-| `status` | — | `active` oder `completed` — leer = alle |
+| `status` | `all` | `active` (anwesend), `completed` (ausgecheckt), `vorregistriert` oder `all` (alle, inkl. offener Vorregistrierungen) |
 | `search` | — | Suche in Vor-/Nachname und Unternehmen |
 | `page` | `1` | Seite |
 | `limit` | `25` | Einträge pro Seite |
@@ -397,7 +411,7 @@ Gibt eine paginierte Besucherliste zurück.
 }
 ```
 
-Jeder Eintrag enthält `visit_id`, `visit_status`, `checked_in_at`, `checked_out_at`, `host_name`, `checked_in_by_name`.
+Besuchs-Einträge enthalten `visit_id`, `visit_status` (`active`/`completed`), `checked_in_at`, `checked_out_at`, `notes`, `host_name`, `checked_in_by_name`. Vorregistrierungs-Einträge (nur bei `status=vorregistriert` oder `all`) sind über das Feld `prereg_id` (statt `visit_id`) erkennbar, `visit_status` ist dann `vorregistriert`; `checked_in_at`/`checked_out_at`/`checked_in_by_name` sind `null`, stattdessen sind `expected_date`/`expected_time` gesetzt. Bei `status=all` werden beide Quellen serverseitig zusammengeführt, gemeinsam nach Zeitstempel sortiert und gemeinsam paginiert.
 
 ---
 
@@ -412,11 +426,16 @@ Checkt einen Besucher direkt ein. Legt `visitor` + `visit` in einem Schritt an. 
   "company": "Beispiel GmbH",
   "host_id": 3,
   "notes": "Kommt wegen Projekt X",
-  "privacy_accepted": true
+  "privacy_accepted": true,
+  "checked_in_at": "2026-07-07T14:32:00.000Z"
 }
 ```
 
-**Pflichtfelder:** `first_name`, `last_name`, `host_id`, `privacy_accepted: true`
+**Pflichtfelder:** `first_name`, `last_name`, `notes`, `privacy_accepted: true`, sowie ein Gastgeber — entweder `host_id` (bestehender lokaler Gastgeber) **oder** `host_name`/`host_email`/`host_ad_object_id` (aus der AD-Autocomplete; der Gastgeber wird dabei per `findOrCreateHostByEmail()` gefunden oder angelegt).
+
+`checked_in_at` ist optional (Frontend belegt das Feld mit der aktuellen Zeit vor, änderbar) — ohne Angabe wird der Server-Zeitpunkt verwendet.
+
+Nach dem Anlegen wird — sofern `notify_host_on_arrival` aktiv und eine Gastgeber-E-Mail vorhanden ist — best-effort eine Ankunfts-Mail an den Gastgeber verschickt (siehe Kapitel 7). Ein Fehlversand blockiert den Check-in nicht.
 
 **Antwort (201):** Neu angelegter Visitor + Visit.
 
@@ -430,7 +449,7 @@ Löscht einen Besucher dauerhaft inkl. aller zugehörigen Visits. Nur `admin`.
 ### Visits (Check-out)
 
 #### `POST /visits/:id/checkout`
-Checkt einen aktiven Visit aus. Setzt `checked_out_at = jetzt` und `status = completed`.
+Checkt einen aktiven Visit aus. Setzt `checked_out_at = jetzt` und `status = completed`. Das Frontend fordert vor dem Aufruf eine zweite Bestätigung in einem Dialog (`ConfirmDialog.jsx`) — serverseitig unverändert.
 
 **Antwort:**
 ```json
@@ -439,12 +458,19 @@ Checkt einen aktiven Visit aus. Setzt `checked_out_at = jetzt` und `status = com
 
 **Fehler:** `404` wenn Visit nicht existiert, `400` wenn bereits ausgecheckt.
 
+#### `POST /visits/:id/reactivate`
+Macht einen Checkout rückgängig — nur solange `checked_out_at` auf den heutigen Kalendertag fällt. Setzt `checked_out_at = NULL`, `status = active`.
+
+**Fehler:** `400` „Besuch ist nicht ausgecheckt" bzw. „Nur am selben Tag rückgängig machbar".
+
 ---
 
 ### Gastgeber
 
+Gastgeber kommen primär live aus dem Active Directory — es gibt keine eigene Verwaltungsseite mehr. `hosts` bleibt intern als Zuordnungstabelle bestehen (FK aus `visits`/`preregistrations`) und wird automatisch befüllt.
+
 #### `GET /hosts`
-Gibt alle aktiven Gastgeber zurück. Öffentlich zugänglich (kein Token nötig) — wird für das Dropdown im Check-in-Formular genutzt.
+Gibt alle aktiven, **lokal bereits bekannten** Gastgeber zurück. Öffentlich zugänglich (kein Token nötig). Wird u.a. von der Admin-Ansicht „Einstellungen → Gastgeber" verwendet.
 
 **Query:** `?search=Max` — filtert nach Name oder E-Mail.
 
@@ -456,8 +482,29 @@ Gibt alle aktiven Gastgeber zurück. Öffentlich zugänglich (kein Token nötig)
 ]
 ```
 
+#### `GET /hosts/search-ad?q=`
+Durchsucht das Active Directory live (app-only, Client-Credentials-Flow — siehe Kapitel 7) nach Name oder E-Mail, ab 3 Zeichen. Für die Autocomplete im Check-in- und Vorregistrierungs-Formular.
+
+**Antwort:**
+```json
+[
+  { "id": "aad-object-id", "name": "Max Mustermann", "email": "max@abat.de", "accountEnabled": true }
+]
+```
+
+**Fehler:** `400` bei weniger als 3 Zeichen, `503` wenn der Verzeichniszugriff nicht konfiguriert ist.
+
+#### `GET /hosts/:id/ad-check`
+Admin-Gegencheck: vergleicht einen lokalen Gastgeber-Eintrag gegen das Verzeichnis. Nur `admin`.
+
+**Antwort:**
+```json
+{ "status": "ok", "adName": "Max Mustermann", "adEmail": "max@abat.de" }
+```
+`status` ∈ `ok` / `not_found` / `disabled` / `name_mismatch` / `no_email`.
+
 #### `POST /hosts` / `PUT /hosts/:id`
-Erstellt oder bearbeitet einen Gastgeber. Nur `admin`.
+Erstellt oder bearbeitet einen Gastgeber manuell. Nur `admin`.
 
 **Body:**
 ```json
@@ -465,7 +512,7 @@ Erstellt oder bearbeitet einen Gastgeber. Nur `admin`.
 ```
 
 #### `DELETE /hosts/:id`
-Soft-Delete: setzt `active = 0`. Der Gastgeber verschwindet aus dem Dropdown, bleibt aber in historischen Besuchen referenzierbar.
+Soft-Delete: setzt `active = 0`. Der Gastgeber verschwindet aus der Zuordnung, bleibt aber in historischen Besuchen referenzierbar.
 
 ---
 
@@ -477,7 +524,7 @@ Gibt alle Vorregistrierungen zurück, neueste zuerst.
 #### `POST /preregistrations`
 Erstellt eine neue Vorregistrierung.
 
-**Pflichtfelder:** `visitor_first_name`, `visitor_last_name`
+**Pflichtfelder:** `visitor_first_name`, `visitor_last_name`, `notes`, sowie ein Gastgeber (`host_id` oder `host_name`/`host_email`/`host_ad_object_id`, wie bei `POST /visitors`).
 
 **Body:**
 ```json
@@ -485,25 +532,32 @@ Erstellt eine neue Vorregistrierung.
   "visitor_first_name": "Anna",
   "visitor_last_name": "Schmidt",
   "visitor_company": "Partner GmbH",
-  "host_id": 2,
+  "host_email": "max@abat.de",
+  "host_name": "Max Mustermann",
   "expected_date": "2026-06-25",
   "expected_time": "10:00",
   "notes": "Bewerbungsgespräch"
 }
 ```
 
-> `expected_date` und `expected_time` sind optional. Die tatsächliche Check-in-Zeit wird beim Einchecken automatisch erfasst.
+> `expected_date` und `expected_time` sind optional (die Spalte war zwischenzeitlich fälschlich `NOT NULL` — siehe Migrationshinweis in Kapitel 5). Die tatsächliche Check-in-Zeit wird beim Einchecken automatisch erfasst.
 
 #### `POST /preregistrations/:id/checkin`
-Kernfunktion: Checkt einen vorangemeldeten Besucher ein. Erstellt einen echten `visit`-Eintrag, setzt `checked_in_by = req.user.id` und ändert den Status auf `checked_in`.
+Kernfunktion: Checkt einen vorangemeldeten Besucher ein. Erstellt einen echten `visit`-Eintrag (inkl. der bei der Vorregistrierung hinterlegten Notiz), setzt `checked_in_by = req.user.id` und ändert den Status auf `checked_in`. Löst wie `POST /visitors` best-effort die Gastgeber-Benachrichtigung aus.
+
+**Body (optional):**
+```json
+{ "checked_in_at": "2026-07-07T14:32:00.000Z" }
+```
+Ohne Angabe wird der Server-Zeitpunkt verwendet. Das Frontend bietet dafür einen per Scrollen/Chevron leicht korrigierbaren Zeit-Regler (`TimeAdjuster.jsx`).
 
 **Antwort:**
 ```json
-{ "message": "Eingecheckt", "visit_id": 42 }
+{ "visitor": {...}, "visit": {...} }
 ```
 
 #### `DELETE /preregistrations/:id`
-Admin: löscht dauerhaft. User: setzt Status auf `cancelled`.
+Admin: löscht dauerhaft. Zugeordneter Gastgeber (E-Mail-Match auf `req.user.email`): storniert (`status = cancelled`). Alle anderen: `403`.
 
 ---
 
@@ -522,7 +576,7 @@ Aktualisiert Einstellungen. Nur erlaubte Keys werden akzeptiert. Nur `admin`.
 
 **Body:**
 ```json
-{ "auto_checkout_enabled": "0", "auto_checkout_time": "19:30", "data_retention_days": "180" }
+{ "auto_checkout_enabled": "0", "auto_checkout_time": "19:30", "data_retention_days": "180", "notify_host_on_arrival": "false" }
 ```
 
 > Nach Änderung der Checkout-Zeit muss das Backend neugestartet werden: `pm2 restart visitor-mgmt`. Die Aufbewahrungsdauer wird beim nächsten täglichen Lauf automatisch übernommen.
@@ -638,6 +692,35 @@ Nach dem Eintragen in `.env`:
 pm2 restart visitor-mgmt --update-env
 ```
 
+### App-only Verzeichniszugriff (Gastgeber-Autocomplete, Admin-Gegencheck, Mail-Benachrichtigung)
+
+Getrennt von der interaktiven SSO-App-Registrierung (Kapitel 7.1) nutzt das Backend eine **zweite, separate Azure-App-Registrierung** mit Client-Credentials-Flow (app-only, kein Nutzerkontext) für drei Zwecke:
+
+1. **Gastgeber-Autocomplete** — `GET /hosts/search-ad?q=` beim Check-in/bei der Vorregistrierung (ab 3 Zeichen).
+2. **Admin-Gegencheck** — `GET /hosts/:id/ad-check` unter Einstellungen → Gastgeber vergleicht lokale Gastgeber-Einträge mit dem Verzeichnis.
+3. **Gastgeber-Benachrichtigung** — `graph-directory.sendMail()` verschickt bei Ankunft eine Mail über `POST /v1.0/users/{NOTIFY_FROM_EMAIL}/sendMail`.
+
+**Einrichtung (Azure Portal):**
+
+| Schritt | Wert |
+|---|---|
+| App-Registrierung | Neue, von der SSO-App getrennte Registrierung (Least-Privilege — ein kompromittiertes SSO-Client-Secret erhält so keinen Verzeichnis-Lesezugriff) |
+| Application Permissions | `User.Read.All`, `Mail.Send` (Typ: **Anwendung**, nicht delegiert) |
+| Admin-Zustimmung | Erforderlich, da Application Permissions |
+| Client Secret | Erstellen, Wert in `.env` übernehmen |
+
+**`.env`-Variablen:**
+```env
+AZURE_DIRECTORY_TENANT_ID=
+AZURE_DIRECTORY_CLIENT_ID=
+AZURE_DIRECTORY_CLIENT_SECRET=
+NOTIFY_FROM_EMAIL=   # Postfach, das als Absender für Ankunfts-Mails dient
+```
+
+Ist eine der drei `AZURE_DIRECTORY_*`-Variablen leer, liefern `/hosts/search-ad` und `/hosts/:id/ad-check` `503` (analog zum SSO-Verhalten bei fehlender Konfiguration); der Mailversand wird still übersprungen. Der Rest der App bleibt ohne diese Konfiguration voll nutzbar — Gastgeber lassen sich in diesem Fall weiterhin nur über bereits bekannte lokale Einträge zuordnen.
+
+> **Betriebshinweis:** Wie beim SSO-Client-Secret läuft auch dieses Secret nach der in Azure gewählten Frist ab — rechtzeitig erneuern und `pm2 restart visitor-mgmt --update-env`.
+
 ---
 
 ## 8. Frontend & Seiten
@@ -648,11 +731,11 @@ pm2 restart visitor-mgmt --update-env
 |---|---|---|
 | `/login` | Anmeldung (Microsoft-Button + lokaler Fallback) | öffentlich |
 | `/auth-callback` | OAuth-Rückgabe — verarbeitet Token, leitet weiter | öffentlich |
-| `/dashboard` | Statistiken, letzte Aktivitäten, Check-in-Button | alle |
-| `/visitors` | Besucherliste mit Tabs und mobiler Kartenansicht | alle |
-| `/preregistrations` | Vorregistrierungen anlegen + einchecken | alle |
-| `/hosts` | Gastgeberliste (Bearbeiten/Löschen nur admin) | alle |
-| `/settings` | Einstellungen (Tabs je nach Rolle) | alle |
+| `/dashboard` | Statistiken, letzte Aktivitäten (max. 10), Check-in-Button | alle |
+| `/visitors` | Zentrale Besucherliste — Tabs Anwesend/Vorregistriert/Ausgecheckt/Alle, mobile Kartenansicht | alle |
+| `/settings` | Einstellungen (Tabs je nach Rolle, inkl. Gastgeber-AD-Gegencheck für admin) | alle |
+
+`/hosts` und `/preregistrations` existieren als Routen nicht mehr; alte Links werden auf `/dashboard` bzw. `/visitors` umgeleitet (React-Router-Redirect in `App.jsx`).
 
 ### Navigation
 
@@ -675,13 +758,18 @@ Darunter eine Liste der letzten 10 Aktivitäten mit Name, Unternehmen, Gastgeber
 
 ### Besucherliste (`/visitors`)
 
-Drei Tabs: **Anwesend** · **Ausgecheckt** · **Alle**  
-Suchfeld filtert in Echtzeit nach Name und Unternehmen.
+Vier Tabs: **Anwesend** · **Vorregistriert** · **Ausgecheckt** · **Alle** — eine gemeinsame Liste statt getrennter Seiten für Besucher und Vorregistrierungen. Suchfeld filtert in Echtzeit nach Name und Unternehmen.
 
-Desktop: Tabelle mit Spalten Name, Gastgeber, Check-in-Zeit, Erfasst durch, Status, Aktionen.  
+Desktop: Tabelle mit Spalten Name, Gastgeber, Check-in, Check-out, Notizen, Erfasst durch, Aktionen (Status-Badge nur im Tab „Alle", da in den übrigen Tabs redundant zum Tab selbst). Jenseits der ersten 10 Einträge werden Tageskopfzeilen („Heute"/„Gestern"/Datum) eingezogen.  
 Mobil: Karten-Layout mit denselben Informationen und Touch-freundlichen Buttons.
 
-„Auschecken"-Button erscheint nur bei aktiven Besuchen.
+Aktionen je nach Zeilen-Typ:
+- **Anwesend:** „Auschecken" (mit Bestätigungsdialog)
+- **Ausgecheckt, heute:** zusätzlich „Rückgängig" (`POST /visits/:id/reactivate`)
+- **Vorregistriert:** „Einchecken" (mit korrigierbarer Uhrzeit) und — nur für den zugeordneten Gastgeber oder Admin — „Absagen"
+- **Admin:** zusätzlich „Löschen" (Besucher dauerhaft löschen)
+
+Kopfbereich bietet zwei Aktionen: **„Einchecken"** (Direkt-Check-in) und **„Vorregistrieren"** (Formular für zukünftige Besuche).
 
 ---
 
@@ -694,37 +782,40 @@ Mobil: Karten-Layout mit denselben Informationen und Touch-freundlichen Buttons.
 3. Modal öffnet sich mit Formular:
    - Vorname* + Nachname*
    - Unternehmen (optional)
-   - Gastgeber/Ansprechpartner* (Dropdown aller aktiven Gastgeber)
-   - Notizen (optional)
-   - Datenschutz-Checkbox*
-4. Absenden → Backend legt `visitor` + `visit` an, setzt `checked_in_by = ID des eingeloggten Users`
+   - Gastgeber/Ansprechpartner* (Live-Suche gegen das Active Directory ab 3 Zeichen)
+   - Check-in-Datum & -Uhrzeit* (vorbelegt mit „jetzt", änderbar)
+   - Notizen* (Pflichtfeld, in der Besucherliste sichtbar)
+   - Checkbox: „Der Besucher wurde auf die Datenschutzerklärung hingewiesen."*
+4. Absenden → Backend legt `visitor` + `visit` an, setzt `checked_in_by = ID des eingeloggten Users`; Gastgeber wird per E-Mail gefunden/angelegt
 5. Besucher erscheint sofort in der Liste mit **„Erfasst am [Zeit] durch [Name]"**
+6. Ist eine Gastgeber-E-Mail vorhanden und die Benachrichtigung aktiv, erhält der Gastgeber eine Ankunfts-Mail
 
 **Check-out:**
 
-- Klick auf **„Auschecken"** in der Zeile → `POST /visits/:id/checkout`
+- Klick auf **„Auschecken"** in der Zeile → Bestätigungsdialog → `POST /visits/:id/checkout`
 - Alternativ: automatisch um 20:00 Uhr (konfigurierbar)
+- Am selben Tag rückgängig machbar über **„Rückgängig"** (`POST /visits/:id/reactivate`) — z.B. bei versehentlichem Auschecken
 
 ---
 
 ## 10. Vorregistrierungen
 
-Für Besucher, die im Voraus angekündigt sind (z.B. Termine, Bewerbungsgespräche).
+Für Besucher, die im Voraus angekündigt sind (z.B. Termine, Bewerbungsgespräche). Verwaltet auf der Besucher-Seite (`/visitors`, Tab „Vorregistriert") — keine eigene Seite mehr.
 
 **Ablauf:**
 
-1. Mitarbeiter öffnet **Vorregistrierungen → „Vorregistrierung"**
-2. Formular ausfüllen: Name, Unternehmen (optional), Gastgeber, Datum (optional), Uhrzeit (optional), Notizen
-3. Eintrag erscheint im Tab **„Ausstehend"**
-4. Wenn Besucher ankommt: irgendein eingeloggter Mitarbeiter klickt **„Einchecken"** bei dem Eintrag
-5. Backend erstellt `visit`, setzt `checked_in_by = aktueller User`, Status → `checked_in`
-6. Eintrag wandert in Tab **„Eingecheckt"**
+1. Mitarbeiter öffnet **Besucher → „Vorregistrieren"**
+2. Formular ausfüllen: Name, Unternehmen (optional), Gastgeber (AD-Autocomplete), Datum (optional), Uhrzeit (optional), Notizen*
+3. Eintrag erscheint im Tab **„Vorregistriert"**
+4. Wenn Besucher ankommt: irgendein eingeloggter Mitarbeiter klickt **„Einchecken"** bei dem Eintrag — die vorbelegte Uhrzeit lässt sich im Dialog per Scrollen/Chevron-Buttons leicht korrigieren
+5. Backend erstellt `visit` (inkl. der hinterlegten Notiz), setzt `checked_in_by = aktueller User`, Status → `checked_in`
+6. Eintrag wandert in den Tab **„Anwesend"**; der Gastgeber erhält ggf. eine Ankunfts-Mail
 
 **Wichtig:** Der Mitarbeiter der einscheckt muss nicht identisch mit dem sein, der vorregistriert hat.
 
 > Datum und Uhrzeit sind optional — die tatsächliche Check-in-Zeit wird beim Einchecken automatisch erfasst.
 
-**Abbrechen:** User kann eigene ausstehende Vorregistrierungen auf `cancelled` setzen. Admin kann löschen.
+**Absagen:** Nur der zugeordnete Gastgeber (E-Mail-Match) oder ein Admin kann eine ausstehende Vorregistrierung absagen (`status = cancelled`) bzw. dauerhaft löschen (Admin). Andere Nutzer erhalten `403`.
 
 ---
 
@@ -777,11 +868,12 @@ Löscht täglich alte Besuchsdaten automatisch. Läuft einmal beim Backend-Start
 
 ## 13. Einstellungen
 
-Erreichbar unter `/settings`. Vier Tabs für Admins, ein Tab für normale Benutzer:
+Erreichbar unter `/settings`. Fünf Tabs für Admins, ein Tab für normale Benutzer:
 
 ### Auto-Checkout (nur admin)
 - Toggle: Auto-Checkout ein- oder ausschalten
 - Uhrzeit-Feld: Zeit im Format HH:MM
+- Zweiter Toggle im selben Tab: „Gastgeber bei Ankunft per Mail benachrichtigen" (`notify_host_on_arrival`) — setzt eine konfigurierte Verzeichnis-Anbindung voraus (Kapitel 7)
 - Speichern → schreibt in `system_settings` Tabelle
 - Nach Zeitänderung: `pm2 restart visitor-mgmt` nötig
 
@@ -802,7 +894,11 @@ Erreichbar unter `/settings`. Vier Tabs für Admins, ein Tab für normale Benutz
 - Löschen: hard-delete wenn keine Besuche erfasst; sonst Deaktivierung (Historien-Schutz)
 - Rollenwechsel: `user` ↔ `admin`
 
-**Gastgeberverwaltung** (Ansprechpartner für Besucher) ist eine separate Seite (`/hosts`), erreichbar über die Sidebar.
+### Gastgeber (nur admin)
+- Read-only Liste der lokal bekannten Gastgeber (Name, E-Mail)
+- „Prüfen"-Button je Zeile → AD-Gegencheck (`GET /hosts/:id/ad-check`), Status-Badge zeigt `ok`/nicht gefunden/deaktiviert/Namensabweichung/keine E-Mail
+- Ohne konfigurierten Verzeichniszugriff (Kapitel 7) zeigt der Tab einen entsprechenden Hinweis statt Fehlern
+- Keine eigene Gastgeber-Verwaltungsseite mehr — Gastgeber werden automatisch aus dem AD angelegt (siehe Kapitel 5, Tabelle `hosts`)
 
 ---
 
@@ -871,6 +967,10 @@ pm2 stop visitor-mgmt             # Anhalten
 | `AZURE_CLIENT_ID` | SSO | Client-ID der Azure App Registration |
 | `AZURE_TENANT_ID` | SSO | Tenant-ID des Entra ID-Verzeichnisses |
 | `AZURE_CLIENT_SECRET` | SSO | Clientgeheimnis — läuft ab, muss erneuert werden! |
+| `AZURE_DIRECTORY_TENANT_ID` | Optional | Tenant-ID für die separate App-only-Verzeichnis-Registrierung (Kapitel 7) |
+| `AZURE_DIRECTORY_CLIENT_ID` | Optional | Client-ID der App-only-Registrierung (`User.Read.All`, `Mail.Send`) |
+| `AZURE_DIRECTORY_CLIENT_SECRET` | Optional | Clientgeheimnis — läuft ab, muss erneuert werden! |
+| `NOTIFY_FROM_EMAIL` | Optional | Absender-Postfach für Gastgeber-Ankunfts-Mails (Microsoft Graph `sendMail`) |
 | `SSO_ALLOWED_DOMAINS` | Optional | Kommagetrennte Liste erlaubter E-Mail-Domains für die SSO-Auto-Provisionierung neuer Accounts (z.B. `abatplus.de,abat.de`). Unbesetzt = keine Einschränkung (aktueller Produktivstand). Siehe [Kapitel 7](#7-microsoft-sso). |
 | `ADMIN_EMAIL` | Optional | Initialer Admin (nur beim allerersten Start wirksam) |
 | `ADMIN_PASSWORD` | Optional | Initiales Admin-Passwort |
@@ -991,6 +1091,13 @@ Zusätzlich rief bis dahin **kein Cron-Job und kein Scheduler** das Skript über
 ### Offener Punkt — noch nicht abschließend geklärt
 
 In der Live-Datenbank existieren zwei Accounts mit generisch wirkenden Namen: `admin@example.com` und `user@example.com`. Es ist nicht abschließend geklärt, ob es sich um legitime aktive Accounts oder um übrig gebliebene Test-Accounts handelt. Dies wurde dem Betreiber zur Prüfung gemeldet (umbenennen, Passwortstärke verifizieren oder deaktivieren) — es wurde noch **keine automatische Aktion** vorgenommen. Vor einem produktiven Go-Live sollten diese Accounts geprüft werden (siehe auch [installation.md, Kapitel 11](./installation.md#11-erster-start--test)).
+
+### Nachträge aus dem Merge-/AD-Feature-Batch (Juli 2026)
+
+- **JWT_SECRET-Fallback in der Middleware behoben:** `backend/src/middleware/auth.js` verifizierte Tokens bisher mit `process.env.JWT_SECRET || 'secret'` — derselbe unsichere Fallback, der in `auth.js`/`auth-microsoft.js` bereits beim vorherigen Hardening-Durchgang entfernt wurde, existierte hier weiterhin unbemerkt. Die Middleware wirft jetzt ebenfalls beim Fehlen von `JWT_SECRET` einen Startfehler statt still auf `'secret'` auszuweichen.
+- **Audit-Log-Pfad korrigiert:** `backend/src/services/audit-log.js` zeigte auf `/opt/visitor-mgmt/logs` (Schwesterprojekt-Pfad statt `-abatplus`) — dieselbe Fehlerklasse wie der bereits behobene Backup-Skript-Bug. Zeigt jetzt korrekt auf `/opt/visitor-mgmt-abatplus/logs`.
+- **Neues App-only-Verzeichniskonto:** separat von der SSO-App-Registrierung, ausschließlich mit Application Permissions (`User.Read.All`, `Mail.Send`) — kompromittiert das SSO-Client-Secret nicht automatisch den Verzeichniszugriff. Details in Kapitel 7.
+- **Absage-Berechtigung für Vorregistrierungen verschärft:** Bisher konnte jeder eingeloggte Mitarbeiter eine fremde Vorregistrierung stornieren. Jetzt nur noch der zugeordnete Gastgeber (E-Mail-Match) oder ein Admin.
 
 ---
 

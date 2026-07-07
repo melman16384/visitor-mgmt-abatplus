@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings2, Users, Key, Plus, Trash2, Pencil, X, Eye, EyeOff, DatabaseZap } from 'lucide-react';
+import { Settings2, Users, Key, Plus, Trash2, Pencil, X, Eye, EyeOff, DatabaseZap, UserCheck, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
 import api from '../api/client';
 import { showToast } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +24,7 @@ const inp = 'w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:
 function AutoCheckoutTab() {
   const [enabled, setEnabled] = useState(true);
   const [time, setTime] = useState('20:00');
+  const [notifyHost, setNotifyHost] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -31,13 +32,18 @@ function AutoCheckoutTab() {
       const s = r.data;
       setEnabled(s.auto_checkout_enabled !== '0' && s.auto_checkout_enabled !== false);
       setTime(s.auto_checkout_time || '20:00');
+      setNotifyHost(s.notify_host_on_arrival !== 'false' && s.notify_host_on_arrival !== '0');
     }).catch(() => {});
   }, []);
 
   const save = async () => {
     setSaving(true);
     try {
-      await api.put('/settings', { auto_checkout_enabled: enabled ? '1' : '0', auto_checkout_time: time });
+      await api.put('/settings', {
+        auto_checkout_enabled: enabled ? '1' : '0',
+        auto_checkout_time: time,
+        notify_host_on_arrival: notifyHost ? 'true' : 'false',
+      });
       showToast('Einstellungen gespeichert');
     } catch {
       showToast('Fehler beim Speichern', 'error');
@@ -45,6 +51,19 @@ function AutoCheckoutTab() {
       setSaving(false);
     }
   };
+
+  const Toggle = ({ value, onChange }) => (
+    <div
+      onClick={() => onChange(v => !v)}
+      role="switch"
+      aria-checked={value}
+      tabIndex={0}
+      onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && onChange(v => !v)}
+      className={`relative flex-shrink-0 w-12 h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${value ? 'bg-abat-blau' : 'bg-gray-300'}`}
+    >
+      <span className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ease-in-out ${value ? 'translate-x-6' : 'translate-x-0.5'}`} />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -55,24 +74,108 @@ function AutoCheckoutTab() {
             <p className="font-medium text-gray-700">Auto-Checkout aktiviert</p>
             <p className="text-xs text-gray-400 mt-0.5">Alle aktiven Besucher werden zur konfigurierten Uhrzeit automatisch ausgecheckt</p>
           </div>
-          <div
-            onClick={() => setEnabled(e => !e)}
-            role="switch"
-            aria-checked={enabled}
-            tabIndex={0}
-            onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && setEnabled(v => !v)}
-            className={`relative flex-shrink-0 w-12 h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${enabled ? 'bg-abat-blau' : 'bg-gray-300'}`}
-          >
-            <span className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ease-in-out ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
-          </div>
+          <Toggle value={enabled} onChange={setEnabled} />
         </div>
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Checkout-Zeit</label>
           <input type="time" value={time} onChange={e => setTime(e.target.value)} className={inp} disabled={!enabled} />
         </div>
-        <button onClick={save} disabled={saving} className="w-full py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50">
-          {saving ? 'Speichern…' : 'Einstellungen speichern'}
-        </button>
+      </div>
+
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+        <h3 className="font-semibold text-gray-800">Gastgeber-Benachrichtigung</h3>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-medium text-gray-700">Gastgeber bei Ankunft per Mail benachrichtigen</p>
+            <p className="text-xs text-gray-400 mt-0.5">Setzt eine funktionierende Verzeichnis-Anbindung voraus (siehe Tab „Gastgeber")</p>
+          </div>
+          <Toggle value={notifyHost} onChange={setNotifyHost} />
+        </div>
+      </div>
+
+      <button onClick={save} disabled={saving} className="w-full py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+        {saving ? 'Speichern…' : 'Einstellungen speichern'}
+      </button>
+    </div>
+  );
+}
+
+// ---- Gastgeber-Tab (AD-Gegencheck) ----
+function AdStatusBadge({ result }) {
+  if (!result) return <span className="text-xs text-gray-300">–</span>;
+  if (result.error) return <span className="inline-flex items-center gap-1 text-xs text-gray-400"><ShieldQuestion size={13} />Fehler</span>;
+  const map = {
+    ok: { icon: ShieldCheck, cls: 'text-green-600', label: 'OK' },
+    not_found: { icon: ShieldAlert, cls: 'text-red-500', label: 'Nicht im AD gefunden' },
+    disabled: { icon: ShieldAlert, cls: 'text-amber-500', label: 'Im AD deaktiviert' },
+    name_mismatch: { icon: ShieldAlert, cls: 'text-amber-500', label: `Name weicht ab (${result.adName})` },
+    no_email: { icon: ShieldQuestion, cls: 'text-gray-400', label: 'Keine E-Mail hinterlegt' },
+  };
+  const m = map[result.status] || { icon: ShieldQuestion, cls: 'text-gray-400', label: result.status };
+  const Icon = m.icon;
+  return <span className={`inline-flex items-center gap-1 text-xs font-medium ${m.cls}`}><Icon size={13} />{m.label}</span>;
+}
+
+function HostsTab() {
+  const [hosts, setHosts] = useState([]);
+  const [results, setResults] = useState({});
+  const [checking, setChecking] = useState({});
+  const [notConfigured, setNotConfigured] = useState(false);
+
+  const load = () => api.get('/hosts').then(r => setHosts(r.data)).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const check = async (id) => {
+    setChecking(c => ({ ...c, [id]: true }));
+    try {
+      const res = await api.get(`/hosts/${id}/ad-check`);
+      setResults(r => ({ ...r, [id]: res.data }));
+      setNotConfigured(false);
+    } catch (err) {
+      if (err.response?.status === 503) setNotConfigured(true);
+      setResults(r => ({ ...r, [id]: { error: true } }));
+    } finally {
+      setChecking(c => ({ ...c, [id]: false }));
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-400">Gastgeber werden automatisch aus dem Active Directory angelegt (Microsoft-Login oder AD-Autocomplete beim Einchecken). Hier lässt sich je Eintrag gegen das Verzeichnis gegenprüfen.</p>
+      {notConfigured && (
+        <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Verzeichnis-Zugriff nicht konfiguriert (AZURE_DIRECTORY_*-Variablen fehlen).</p>
+      )}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">E-Mail</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">AD-Status</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Aktion</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {hosts.length === 0 ? (
+              <tr><td colSpan={4} className="py-10 text-center text-gray-400">Noch keine Gastgeber</td></tr>
+            ) : hosts.map(h => (
+              <tr key={h.id} className="hover:bg-gray-50/50">
+                <td className="px-4 py-3 font-medium text-gray-800">{h.name}</td>
+                <td className="px-4 py-3 text-gray-600">{h.email || '–'}</td>
+                <td className="px-4 py-3"><AdStatusBadge result={results[h.id]} /></td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => check(h.id)}
+                    disabled={checking[h.id]}
+                    className="px-3 py-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-xs font-medium disabled:opacity-50"
+                  >
+                    {checking[h.id] ? 'Prüfe…' : 'Prüfen'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -368,6 +471,7 @@ export default function Settings() {
     ...(isAdmin ? [{ key: 'retention', label: 'Datenspeicherung', icon: DatabaseZap }] : []),
     { key: 'password', label: 'Passwort', icon: Key },
     ...(isAdmin ? [{ key: 'users', label: 'Benutzer', icon: Users }] : []),
+    ...(isAdmin ? [{ key: 'hosts', label: 'Gastgeber', icon: UserCheck }] : []),
   ];
 
   useEffect(() => {
@@ -396,6 +500,7 @@ export default function Settings() {
         {tab === 'retention' && isAdmin && <DataRetentionTab />}
         {tab === 'password' && <PasswordTab />}
         {tab === 'users' && isAdmin && <UsersTab />}
+        {tab === 'hosts' && isAdmin && <HostsTab />}
       </div>
     </div>
   );

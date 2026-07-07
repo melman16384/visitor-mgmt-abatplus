@@ -25,6 +25,31 @@ router.post('/:id/checkout', authenticate, (req, res) => {
   res.json(updated);
 });
 
+// POST /:id/reactivate — Checkout am selben Tag rückgängig machen
+router.post('/:id/reactivate', authenticate, (req, res) => {
+  const visit = db.prepare(`
+    SELECT v.*, vi.first_name, vi.last_name
+    FROM visits v
+    JOIN visitors vi ON vi.id = v.visitor_id
+    WHERE v.id = ?
+  `).get(req.params.id);
+  if (!visit) return res.status(404).json({ error: 'Besuch nicht gefunden' });
+  if (visit.status !== 'completed') return res.status(400).json({ error: 'Besuch ist nicht ausgecheckt' });
+
+  const checkedOutDay = (visit.checked_out_at || '').split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
+  if (checkedOutDay !== today) {
+    return res.status(400).json({ error: 'Nur am selben Tag rückgängig machbar' });
+  }
+
+  db.prepare(`UPDATE visits SET checked_out_at = NULL, status = 'active' WHERE id = ?`).run(req.params.id);
+
+  try { log('CHECKOUT_RÜCKGÄNGIG', req.user.name, `${visit.first_name} ${visit.last_name}`); } catch {}
+
+  const updated = db.prepare('SELECT * FROM visits WHERE id = ?').get(req.params.id);
+  res.json(updated);
+});
+
 // GET /:id
 router.get('/:id', authenticate, (req, res) => {
   const visit = db.prepare(`

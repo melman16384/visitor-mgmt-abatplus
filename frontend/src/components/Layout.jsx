@@ -5,11 +5,9 @@ import Sidebar from './Sidebar';
 import { useAuth } from '../context/AuthContext';
 
 const PAGE_TITLES = {
-  '/dashboard':        'Dashboard',
-  '/visitors':         'Besucher',
-  '/preregistrations': 'Vorregistrierungen',
-  '/hosts':            'Gastgeber',
-  '/settings':         'Einstellungen',
+  '/dashboard': 'Dashboard',
+  '/visitors':  'Besucher',
+  '/settings':  'Einstellungen',
 };
 
 function Toast({ toasts }) {

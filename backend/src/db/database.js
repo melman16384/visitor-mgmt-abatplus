@@ -67,7 +67,7 @@ function initializeDatabase() {
       visitor_last_name TEXT NOT NULL,
       visitor_company TEXT,
       host_id INTEGER,
-      expected_date DATE NOT NULL,
+      expected_date DATE,
       expected_time TIME,
       notes TEXT,
       status TEXT DEFAULT 'pending',
@@ -89,6 +89,7 @@ const settingDefaults = {
   auto_checkout_enabled: 'true',
   auto_checkout_time: '20:00',
   data_retention_days: '365',
+  notify_host_on_arrival: 'true',
 };
 const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
 Object.entries(settingDefaults).forEach(([k, v]) => insertSetting.run(k, v));
@@ -114,6 +115,41 @@ if (!visitsInfo.find(c => c.name === 'privacy_accepted')) {
 
 // Remove unused visits columns (SQLite only supports DROP COLUMN from 3.35+)
 // We leave extra columns in place — they are simply ignored in queries.
+
+// Migrate hosts: add ad_object_id if missing (Verzeichnis-gestützte Gastgeber)
+const hostsInfo = db.prepare('PRAGMA table_info(hosts)').all();
+if (!hostsInfo.find(c => c.name === 'ad_object_id')) {
+  db.exec('ALTER TABLE hosts ADD COLUMN ad_object_id TEXT');
+}
+
+// Migrate preregistrations: expected_date muss optional sein (Datum ist laut Doku/Frontend
+// kein Pflichtfeld), war aber in der ursprünglichen CREATE-TABLE-Anweisung NOT NULL.
+// SQLite kennt kein ALTER COLUMN — Constraint-Entfernung erfordert einen Tabellen-Rebuild.
+const preregInfo = db.prepare('PRAGMA table_info(preregistrations)').all();
+const expectedDateCol = preregInfo.find(c => c.name === 'expected_date');
+if (expectedDateCol && expectedDateCol.notnull) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE preregistrations_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        visitor_first_name TEXT NOT NULL,
+        visitor_last_name TEXT NOT NULL,
+        visitor_company TEXT,
+        host_id INTEGER,
+        expected_date DATE,
+        expected_time TIME,
+        notes TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (host_id) REFERENCES hosts(id)
+      );
+      INSERT INTO preregistrations_new SELECT * FROM preregistrations;
+      DROP TABLE preregistrations;
+      ALTER TABLE preregistrations_new RENAME TO preregistrations;
+    `);
+  })();
+  console.log('[migration] preregistrations.expected_date auf optional migriert');
+}
 
 // Migrate user roles: superadmin/admin → admin, receptionist → user
 db.exec("UPDATE users SET role = 'admin' WHERE role IN ('superadmin', 'admin')");

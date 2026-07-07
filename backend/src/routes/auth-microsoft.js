@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const msal = require('@azure/msal-node');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
+const { findOrCreateHostByEmail } = require('../services/hosts-helper');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET) {
@@ -122,13 +123,7 @@ router.get('/callback', async (req, res) => {
       const newUserId = userResult.lastInsertRowid;
 
       // Auto-create host entry
-      const existingHost = db.prepare('SELECT id FROM hosts WHERE LOWER(email) = ?').get(msEmail);
-      if (!existingHost) {
-        db.prepare(`
-          INSERT INTO hosts (name, email, active)
-          VALUES (?, ?, 1)
-        `).run(msName, msEmail);
-      }
+      findOrCreateHostByEmail(msName, msEmail);
 
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(newUserId);
       console.log(`[MS SSO] Neuer Benutzer erstellt: ${msEmail}`);

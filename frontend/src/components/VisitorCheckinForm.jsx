@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { X, UserPlus } from 'lucide-react';
+import { format } from 'date-fns';
 import api from '../api/client';
+import HostAutocomplete from './HostAutocomplete';
 
 export default function VisitorCheckinForm({ onSuccess, onClose }) {
+  const now = new Date();
   const [form, setForm] = useState({
     first_name: '', last_name: '', company: '',
-    host_id: '', notes: '', privacy_accepted: false,
+    notes: '', privacy_accepted: false,
+    checkin_date: format(now, 'yyyy-MM-dd'),
+    checkin_time: format(now, 'HH:mm'),
   });
-  const [hosts, setHosts] = useState([]);
+  const [host, setHost] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/hosts').then(r => setHosts(r.data)).catch(() => {});
     // prevent body scroll on mobile
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
@@ -26,10 +30,22 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.privacy_accepted) { setError('Bitte Datenschutzerklärung bestätigen.'); return; }
+    if (!host) { setError('Bitte Gastgeber auswählen.'); return; }
+    if (!form.notes.trim()) { setError('Bitte Notizen eintragen.'); return; }
     setError('');
     setLoading(true);
     try {
-      const res = await api.post('/visitors', form);
+      const res = await api.post('/visitors', {
+        first_name: form.first_name,
+        last_name: form.last_name,
+        company: form.company,
+        notes: form.notes,
+        privacy_accepted: form.privacy_accepted,
+        checked_in_at: new Date(`${form.checkin_date}T${form.checkin_time}`).toISOString(),
+        host_name: host.name,
+        host_email: host.email,
+        host_ad_object_id: host.ad_object_id,
+      });
       onSuccess(res.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Fehler beim Einchecken');
@@ -90,17 +106,23 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
 
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Gastgeber (Ansprechpartner) *</label>
-            <select name="host_id" value={form.host_id} onChange={handleChange} required className={`${inp} appearance-none`}>
-              <option value="">– bitte wählen –</option>
-              {hosts.map(h => (
-                <option key={h.id} value={h.id}>{h.name}{h.email ? ` – ${h.email}` : ''}</option>
-              ))}
-            </select>
+            <HostAutocomplete value={host} onSelect={setHost} />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notizen</label>
-            <textarea name="notes" value={form.notes} onChange={handleChange} rows={2} className={`${inp} resize-none`} placeholder="Optional" />
+            <div className="flex items-baseline justify-between mb-1.5">
+              <label className="text-xs font-semibold text-gray-600">Check-in Datum & Uhrzeit</label>
+              <span className="text-[10px] text-gray-400">vorbelegt, bei Bedarf änderbar</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <input type="date" name="checkin_date" value={form.checkin_date} onChange={handleChange} className={inp} />
+              <input type="time" name="checkin_time" value={form.checkin_time} onChange={handleChange} className={inp} />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notizen *</label>
+            <textarea name="notes" value={form.notes} onChange={handleChange} required rows={2} className={`${inp} resize-none`} placeholder="Grund des Besuchs, Besonderheiten…" />
           </div>
 
           <label className="flex items-start gap-3 cursor-pointer p-3.5 bg-blue-50 rounded-xl border border-blue-100">
@@ -109,7 +131,7 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
               className="mt-0.5 w-5 h-5 rounded border-gray-300 text-abat-blau focus:ring-abat-blau flex-shrink-0 cursor-pointer"
             />
             <span className="text-sm text-gray-700 leading-snug">
-              Besucher hat die <strong className="text-gray-900">Datenschutzerklärung</strong> zur Kenntnis genommen und stimmt der Verarbeitung zu. *
+              Der Besucher wurde auf die <strong className="text-gray-900">Datenschutzerklärung</strong> hingewiesen. *
             </span>
           </label>
         </form>

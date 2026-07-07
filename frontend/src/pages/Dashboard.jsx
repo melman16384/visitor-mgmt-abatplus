@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserCheck, UserMinus, CalendarCheck, UserPlus } from 'lucide-react';
+import { Users, UserCheck, UserMinus, CalendarCheck, UserPlus, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import api from '../api/client';
@@ -91,8 +92,11 @@ export default function Dashboard() {
 
       {isAdmin && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900 text-sm">Letzte Aktivitäten</h2>
+            <Link to="/visitors" className="flex items-center gap-1 text-xs font-semibold text-abat-blau hover:underline">
+              Alle Besuche ansehen <ArrowRight size={13} />
+            </Link>
           </div>
           {recent.length === 0 ? (
             <div className="py-12 text-center text-gray-400 text-sm">Noch keine Aktivitäten</div>
