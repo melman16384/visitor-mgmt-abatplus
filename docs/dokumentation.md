@@ -662,11 +662,16 @@ Bei **weiteren Logins** desselben Accounts:
 
 ### Domain-Allowlist für Auto-Provisionierung (optional)
 
-Über die optionale Umgebungsvariable `SSO_ALLOWED_DOMAINS` (kommagetrennte Liste, z.B. `abatplus.de,abat.de`) kann eingeschränkt werden, welche E-Mail-Domains bei der **erstmaligen** SSO-Anmeldung automatisch einen neuen Account erhalten. Ist die Variable gesetzt und die Domain des Microsoft-Kontos nicht enthalten, wird die Auto-Provisionierung abgelehnt (Redirect mit `?error=domain_not_allowed`) — bestehende Accounts können sich unabhängig davon weiterhin anmelden.
+Über `sso_allowed_domains` (kommagetrennte Liste, z.B. `abatplus.de,abat.de`, editierbar unter Einstellungen → Microsoft SSO) kann eingeschränkt werden, welche E-Mail-Domains bei der **erstmaligen** SSO-Anmeldung automatisch einen neuen Account erhalten. Ist der Wert gesetzt und die Domain des Microsoft-Kontos nicht enthalten, wird die Auto-Provisionierung abgelehnt (Redirect mit `?error=domain_not_allowed`) — bestehende Accounts können sich unabhängig davon weiterhin anmelden.
 
-Ist `SSO_ALLOWED_DOMAINS` **nicht gesetzt** (aktueller Stand in der Produktivumgebung), ändert sich nichts am bisherigen Verhalten: Jeder erfolgreich gegen den konfigurierten Azure-Tenant authentifizierte Nutzer kann automatisch angelegt werden. Sobald die Ziel-Domain(s) feststehen, wird empfohlen, `SSO_ALLOWED_DOMAINS` produktiv zu setzen (siehe [installation.md, Kapitel 5](./installation.md#5-microsoft-sso-einrichten-azure)).
+Ist der Wert **leer** (aktueller Stand in der Produktivumgebung), ändert sich nichts am bisherigen Verhalten: Jeder erfolgreich gegen den konfigurierten Azure-Tenant authentifizierte Nutzer kann automatisch angelegt werden. Sobald die Ziel-Domain(s) feststehen, wird empfohlen, die Allowlist produktiv zu setzen.
 
-### Azure App Registration einrichten
+### Azure App Registration einrichten — eine Registrierung für Login UND Verzeichnis
+
+Login (SSO) und Verzeichnis-Zugriff (Gastgeber-Autocomplete, Admin-Gegencheck, Ankunfts-Mails) teilen sich **eine einzige** Azure-App-Registrierung, unterschieden nur durch die Art der Berechtigung:
+
+- **Delegiert** (für den interaktiven Login-Flow): `openid`, `profile`, `email`, `User.Read`
+- **Anwendung** (für den app-only Client-Credentials-Flow, Admin-Zustimmung erforderlich): `User.Read.All`, `Mail.Send`
 
 **Azure Portal → Microsoft Entra ID → App-Registrierungen → Neue Registrierung**
 
@@ -676,53 +681,16 @@ Ist `SSO_ALLOWED_DOMAINS` **nicht gesetzt** (aktueller Stand in der Produktivumg
 | Unterstützte Kontotypen | Nur Konten in diesem Organisationsverzeichnis |
 | Umleitungs-URI (Web) | `https://visitorplus.luwilab.work/api/auth/microsoft/callback` |
 
-Nach Erstellung folgende Werte notieren und in `.env` eintragen:
-
-| Wert im Portal | .env-Variable |
-|---|---|
-| Anwendungs-ID (Client ID) | `AZURE_CLIENT_ID` |
-| Verzeichnis-ID (Tenant ID) | `AZURE_TENANT_ID` |
-| Clientgeheimnis (neu erstellen) | `AZURE_CLIENT_SECRET` |
-
 **Clientgeheimnis erstellen:**  
 App-Registrierung → Zertifikate & Geheimnisse → Neuer geheimer Clientschlüssel → Wert sofort kopieren (wird nur einmal angezeigt).
 
-**API-Berechtigungen:**  
-Standardmäßig sind `openid`, `profile` und `email` als delegierte Berechtigungen vorhanden. `User.Read` ggf. ergänzen. Administratorzustimmung erteilen.
+**API-Berechtigungen:** beide Sets aus obiger Liste hinzufügen; für die Anwendungsberechtigungen (`User.Read.All`, `Mail.Send`) ist Administratorzustimmung nötig.
 
-Nach dem Eintragen in `.env`:
-```bash
-pm2 restart visitor-mgmt --update-env
-```
+**Konfiguration in der App:** Tenant-ID, Client-ID, Client Secret sowie die Domain-Allowlist und das Absender-Postfach für Gastgeber-Mails werden unter **Einstellungen → Microsoft SSO** eingetragen (dort auch die Umleitungs-URI zum Kopieren und eine Statusanzeige „Konfiguriert"/„Nicht konfiguriert"). Alternativ weiterhin per `.env` möglich (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `SSO_ALLOWED_DOMAINS`, `NOTIFY_FROM_EMAIL`) — die `.env`-Werte dienen nur noch als Fallback, falls in der Datenbank nichts hinterlegt ist; ein in den Einstellungen gespeicherter Wert hat Vorrang. Änderungen über die Einstellungsseite wirken sofort, ohne Neustart.
 
-### App-only Verzeichniszugriff (Gastgeber-Autocomplete, Admin-Gegencheck, Mail-Benachrichtigung)
+Ist weder in der Datenbank noch in `.env` ein vollständiger Satz (Tenant-ID, Client-ID, Client Secret) hinterlegt, liefern `/api/auth/microsoft`, `/hosts/search-ad` und `/hosts/:id/ad-check` `503`; der Mailversand wird still übersprungen. Der Rest der App bleibt ohne diese Konfiguration voll nutzbar — Gastgeber lassen sich in diesem Fall weiterhin nur über bereits bekannte lokale Einträge zuordnen.
 
-Getrennt von der interaktiven SSO-App-Registrierung (Kapitel 7.1) nutzt das Backend eine **zweite, separate Azure-App-Registrierung** mit Client-Credentials-Flow (app-only, kein Nutzerkontext) für drei Zwecke:
-
-1. **Gastgeber-Autocomplete** — `GET /hosts/search-ad?q=` beim Check-in/bei der Vorregistrierung (ab 3 Zeichen).
-2. **Admin-Gegencheck** — `GET /hosts/:id/ad-check` unter Einstellungen → Gastgeber vergleicht lokale Gastgeber-Einträge mit dem Verzeichnis.
-3. **Gastgeber-Benachrichtigung** — `graph-directory.sendMail()` verschickt bei Ankunft eine Mail über `POST /v1.0/users/{NOTIFY_FROM_EMAIL}/sendMail`.
-
-**Einrichtung (Azure Portal):**
-
-| Schritt | Wert |
-|---|---|
-| App-Registrierung | Neue, von der SSO-App getrennte Registrierung (Least-Privilege — ein kompromittiertes SSO-Client-Secret erhält so keinen Verzeichnis-Lesezugriff) |
-| Application Permissions | `User.Read.All`, `Mail.Send` (Typ: **Anwendung**, nicht delegiert) |
-| Admin-Zustimmung | Erforderlich, da Application Permissions |
-| Client Secret | Erstellen, Wert in `.env` übernehmen |
-
-**`.env`-Variablen:**
-```env
-AZURE_DIRECTORY_TENANT_ID=
-AZURE_DIRECTORY_CLIENT_ID=
-AZURE_DIRECTORY_CLIENT_SECRET=
-NOTIFY_FROM_EMAIL=   # Postfach, das als Absender für Ankunfts-Mails dient
-```
-
-Ist eine der drei `AZURE_DIRECTORY_*`-Variablen leer, liefern `/hosts/search-ad` und `/hosts/:id/ad-check` `503` (analog zum SSO-Verhalten bei fehlender Konfiguration); der Mailversand wird still übersprungen. Der Rest der App bleibt ohne diese Konfiguration voll nutzbar — Gastgeber lassen sich in diesem Fall weiterhin nur über bereits bekannte lokale Einträge zuordnen.
-
-> **Betriebshinweis:** Wie beim SSO-Client-Secret läuft auch dieses Secret nach der in Azure gewählten Frist ab — rechtzeitig erneuern und `pm2 restart visitor-mgmt --update-env`.
+> **Betriebshinweis:** Das Client Secret läuft nach der in Azure gewählten Frist ab — rechtzeitig erneuern (Einstellungen → Microsoft SSO oder `.env`).
 
 ---
 
@@ -974,20 +942,17 @@ pm2 stop visitor-mgmt             # Anhalten
 | `PG_USER` | Ja | DB-Rolle (`visitormgmt_abatplus`) |
 | `PG_PASSWORD` | Ja | Passwort der DB-Rolle |
 | `APP_URL` | Ja | Öffentliche URL der App inkl. Schema, ohne Slash |
-| `AZURE_CLIENT_ID` | SSO | Client-ID der Azure App Registration |
-| `AZURE_TENANT_ID` | SSO | Tenant-ID des Entra ID-Verzeichnisses |
-| `AZURE_CLIENT_SECRET` | SSO | Clientgeheimnis — läuft ab, muss erneuert werden! |
-| `AZURE_DIRECTORY_TENANT_ID` | Optional | Tenant-ID für die separate App-only-Verzeichnis-Registrierung (Kapitel 7) |
-| `AZURE_DIRECTORY_CLIENT_ID` | Optional | Client-ID der App-only-Registrierung (`User.Read.All`, `Mail.Send`) |
-| `AZURE_DIRECTORY_CLIENT_SECRET` | Optional | Clientgeheimnis — läuft ab, muss erneuert werden! |
-| `NOTIFY_FROM_EMAIL` | Optional | Absender-Postfach für Gastgeber-Ankunfts-Mails (Microsoft Graph `sendMail`) |
-| `SSO_ALLOWED_DOMAINS` | Optional | Kommagetrennte Liste erlaubter E-Mail-Domains für die SSO-Auto-Provisionierung neuer Accounts (z.B. `abatplus.de,abat.de`). Unbesetzt = keine Einschränkung (aktueller Produktivstand). Siehe [Kapitel 7](#7-microsoft-sso). |
+| `AZURE_CLIENT_ID` | Fallback | Client-ID der Azure App Registration — Fallback, falls in Einstellungen → Microsoft SSO nichts hinterlegt ist |
+| `AZURE_TENANT_ID` | Fallback | Tenant-ID des Entra ID-Verzeichnisses — Fallback (s.o.) |
+| `AZURE_CLIENT_SECRET` | Fallback | Clientgeheimnis — Fallback (s.o.), läuft ab, muss erneuert werden! |
+| `SSO_ALLOWED_DOMAINS` | Fallback | Kommagetrennte Liste erlaubter E-Mail-Domains für die SSO-Auto-Provisionierung — Fallback, siehe [Kapitel 7](#7-microsoft-sso) |
+| `NOTIFY_FROM_EMAIL` | Fallback | Absender-Postfach für Gastgeber-Ankunfts-Mails — Fallback (s.o.) |
 | `ADMIN_EMAIL` | Optional | Initialer Admin (nur beim allerersten Start wirksam) |
 | `ADMIN_PASSWORD` | Optional | Initiales Admin-Passwort |
 
 > **JWT_SECRET:** Niemals leer lassen, niemals in Git einchecken. Bei Änderung werden alle bestehenden Tokens ungültig — alle Nutzer müssen sich neu anmelden. `auth.js` und `auth-microsoft.js` werfen beim Start einen Fehler, wenn die Variable fehlt — es gibt keinen unsicheren Default-Fallback mehr (siehe [Kapitel 17, Sicherheit](#17-sicherheit)).
 
-> **AZURE_CLIENT_SECRET Ablauf:** Clientgeheimnisse laufen nach 1–2 Jahren ab (konfigurierbar in Azure). Bei Ablauf schlägt der Microsoft-Login still fehl. Rechtzeitig erneuern und `.env` aktualisieren.
+> **Microsoft-SSO-Werte:** `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET`/`SSO_ALLOWED_DOMAINS`/`NOTIFY_FROM_EMAIL` sind nur noch der Fallback — primär werden sie unter Einstellungen → Microsoft SSO in der DB (`system_settings`) gepflegt, ein dort gesetzter Wert hat Vorrang und wirkt sofort ohne Neustart. Das Client Secret läuft nach 1–2 Jahren ab (konfigurierbar in Azure); bei Ablauf schlägt der Microsoft-Login still fehl.
 
 ---
 

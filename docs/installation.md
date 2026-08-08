@@ -193,45 +193,22 @@ Nach der Registrierung auf der Übersichtsseite:
 nano /opt/visitor-mgmt-abatplus/backend/.env
 ```
 
+Eine einzige App-Registrierung deckt **beides** ab — den interaktiven Login UND den app-only Verzeichniszugriff (Gastgeber-Autocomplete, Admin-Gegencheck, Ankunfts-Mails):
+
+- **Delegierte Berechtigungen** (Login): `openid`, `profile`, `email`, `User.Read`
+- **Anwendungsberechtigungen** (Verzeichnis, Client-Credentials-Flow — **API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Anwendungsberechtigungen**, dann **Administratorzustimmung erteilen**): `User.Read.All`, `Mail.Send`
+
+**Bevorzugt: über die App selbst konfigurieren** — nach dem ersten Start unter **Einstellungen → Microsoft SSO** (Admin-Login) Tenant-ID, Client-ID, Client Secret, optional die Domain-Allowlist und das Absender-Postfach eintragen. Wirkt sofort, kein Neustart nötig.
+
+**Alternativ per `.env`** (dient nur als Fallback, falls in den Einstellungen nichts hinterlegt ist):
+
 ```env
 AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
 
-> **Clientgeheimnis-Ablauf:** Das Geheimnis läuft nach dem gewählten Zeitraum ab. Bei Ablauf schlägt der Microsoft-Login fehl. Vor Ablauf ein neues Geheimnis erstellen und `.env` aktualisieren, dann `pm2 restart visitor-mgmt --update-env`.
-
-> **Erst nach Eintragen aller drei `AZURE_*`-Werte aktiv:** Solange `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` oder `AZURE_CLIENT_SECRET` leer sind, liefert `GET /api/auth/microsoft` einen `503`-Fehler (`„Microsoft SSO nicht konfiguriert"`). Der lokale Admin-Login bleibt in diesem Zustand die einzige Anmeldemöglichkeit. Erst wenn alle drei Werte gesetzt sind und das Backend neugestartet wurde, ist der SSO-Flow tatsächlich nutzbar.
-
-### Optional: Domain-Allowlist für Auto-Provisionierung
-
-Standardmäßig kann sich **jeder** Benutzer, der sich erfolgreich gegen den konfigurierten Azure-Tenant authentifiziert, per SSO einen neuen Account anlegen (Auto-Provisionierung beim ersten Login). Über die optionale Variable `SSO_ALLOWED_DOMAINS` kann das auf bestimmte E-Mail-Domains eingeschränkt werden:
-
-```env
-# Kommagetrennt, ohne @ — nur diese Domains dürfen sich neu registrieren
+# Kommagetrennt, ohne @ — nur diese Domains dürfen sich per SSO neu registrieren (leer = keine Einschränkung)
 SSO_ALLOWED_DOMAINS=abatplus.de,abat.de
-```
-
-Bereits bestehende Accounts können sich weiterhin unabhängig von dieser Einstellung anmelden — die Prüfung greift ausschließlich bei der Neuanlage. Ist die Variable nicht gesetzt, ändert sich nichts am bisherigen Verhalten.
-
-> **Empfehlung:** Sobald die Ziel-Domain(s) für den Produktivbetrieb feststehen, `SSO_ALLOWED_DOMAINS` setzen — das verhindert, dass sich versehentlich Konten aus fremden, im selben Azure-Tenant befindlichen Domains automatisch anlegen.
-
-### Optional: App-only Verzeichniszugriff (Gastgeber-Autocomplete, Admin-Gegencheck, Mail-Benachrichtigung)
-
-Für die Gastgeber-Autocomplete beim Check-in, den Admin-Gegencheck (Einstellungen → Gastgeber) und die Ankunfts-Mail an den Gastgeber wird eine **zweite, von der SSO-App getrennte** Azure-App-Registrierung benötigt (Client-Credentials-Flow, kein Nutzerkontext — Least-Privilege gegenüber der interaktiven SSO-App).
-
-1. **Azure Portal → Microsoft Entra ID → App-Registrierungen → Neue Registrierung** (z.B. `abat+ Besucherverwaltung – Verzeichnis`, kein Redirect-URI nötig)
-2. **Zertifikate & Geheimnisse** → neues Client Secret erstellen, Wert sofort kopieren
-3. **API-Berechtigungen → Berechtigung hinzufügen → Microsoft Graph → Anwendungsberechtigungen (nicht delegiert):**
-   - `User.Read.All`
-   - `Mail.Send`
-4. **Administratorzustimmung erteilen** (zwingend bei Anwendungsberechtigungen)
-5. Werte in `.env` eintragen:
-
-```env
-AZURE_DIRECTORY_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_DIRECTORY_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-AZURE_DIRECTORY_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Postfach, das als Absender für Gastgeber-Ankunfts-Mails dient (muss im Tenant existieren)
 NOTIFY_FROM_EMAIL=besucher@deine-domain.de
@@ -241,7 +218,11 @@ NOTIFY_FROM_EMAIL=besucher@deine-domain.de
 pm2 restart visitor-mgmt --update-env
 ```
 
-> **Ohne diese Konfiguration** bleibt die App voll nutzbar — Gastgeber-Autocomplete und Admin-Gegencheck liefern `503` (analog zum SSO-Verhalten), der Mailversand wird still übersprungen. Gastgeber lassen sich in diesem Fall nur über bereits lokal bekannte Einträge zuordnen (z.B. aus vorherigen SSO-Logins).
+> **Clientgeheimnis-Ablauf:** Das Geheimnis läuft nach dem gewählten Zeitraum ab. Bei Ablauf schlägt sowohl der Microsoft-Login als auch die Verzeichnis-Anbindung fehl. Vor Ablauf ein neues Geheimnis erstellen und in Einstellungen → Microsoft SSO (oder `.env`) aktualisieren.
+
+> **Erst nach Eintragen aller drei Werte aktiv:** Solange Tenant-ID, Client-ID oder Client Secret leer sind (weder in den Einstellungen noch in `.env`), liefern `GET /api/auth/microsoft`, `/hosts/search-ad` und `/hosts/:id/ad-check` einen `503`-Fehler. Der lokale Admin-Login bleibt in diesem Zustand die einzige Anmeldemöglichkeit; Gastgeber lassen sich nur über bereits lokal bekannte Einträge zuordnen.
+
+> **Empfehlung:** Sobald die Ziel-Domain(s) für den Produktivbetrieb feststehen, die Allowlist setzen — das verhindert, dass sich versehentlich Konten aus fremden, im selben Azure-Tenant befindlichen Domains automatisch anlegen.
 
 ---
 

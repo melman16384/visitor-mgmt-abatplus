@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
 router.get('/search-ad', authenticate, async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 3) return res.status(400).json({ error: 'Mindestens 3 Zeichen erforderlich' });
-  if (!graphDirectory.isConfigured()) {
+  if (!(await graphDirectory.isConfigured())) {
     return res.status(503).json({ error: 'Verzeichnis-Zugriff nicht konfiguriert' });
   }
   try {
@@ -47,7 +47,7 @@ router.get('/:id/ad-check', authenticate, requireRole(['admin']), async (req, re
   const host = await db.prepare('SELECT * FROM hosts WHERE id = ?').get(req.params.id);
   if (!host) return res.status(404).json({ error: 'Gastgeber nicht gefunden' });
   if (!host.email) return res.json({ status: 'no_email' });
-  if (!graphDirectory.isConfigured()) {
+  if (!(await graphDirectory.isConfigured())) {
     return res.status(503).json({ error: 'Verzeichnis-Zugriff nicht konfiguriert' });
   }
 

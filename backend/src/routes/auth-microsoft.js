@@ -4,6 +4,7 @@ const msal = require('@azure/msal-node');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const { findOrCreateHostByEmail } = require('../services/hosts-helper');
+const { getSsoConfig, getAllowedDomains } = require('../services/sso-config');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET) {
@@ -12,8 +13,6 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET;
 const APP_URL = process.env.APP_URL || 'http://localhost:3001';
 const REDIRECT_URI = `${APP_URL}/api/auth/microsoft/callback`;
-const SSO_ALLOWED_DOMAINS = (process.env.SSO_ALLOWED_DOMAINS || '')
-  .split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
 
 // CSRF-Schutz für den OAuth-Callback: state-Werte und kurzlebige One-Time-Codes,
 // über die das JWT ausgetauscht wird statt es per URL-Query zu übergeben.
@@ -29,25 +28,22 @@ function pruneExpired(map, getExpiresAt) {
   }
 }
 
-function getMsalClient() {
-  const clientId = process.env.AZURE_CLIENT_ID;
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientSecret = process.env.AZURE_CLIENT_SECRET;
-
-  if (!clientId || !tenantId || !clientSecret) return null;
+async function getMsalClient() {
+  const config = await getSsoConfig();
+  if (!config) return null;
 
   return new msal.ConfidentialClientApplication({
     auth: {
-      clientId,
-      authority: `https://login.microsoftonline.com/${tenantId}`,
-      clientSecret,
+      clientId: config.clientId,
+      authority: `https://login.microsoftonline.com/${config.tenantId}`,
+      clientSecret: config.clientSecret,
     },
   });
 }
 
 // GET /api/auth/microsoft — initiate login
 router.get('/', async (req, res) => {
-  const cca = getMsalClient();
+  const cca = await getMsalClient();
   if (!cca) return res.status(503).json({ error: 'Microsoft SSO nicht konfiguriert' });
 
   try {
@@ -69,7 +65,7 @@ router.get('/', async (req, res) => {
 
 // GET /api/auth/microsoft/callback — handle Azure redirect
 router.get('/callback', async (req, res) => {
-  const cca = getMsalClient();
+  const cca = await getMsalClient();
   if (!cca) return res.redirect(`${APP_URL}/login?error=sso_not_configured`);
 
   const { code, state, error: msError } = req.query;
@@ -109,7 +105,8 @@ router.get('/callback', async (req, res) => {
 
     if (!user) {
       const emailDomain = msEmail.split('@')[1];
-      if (SSO_ALLOWED_DOMAINS.length > 0 && !SSO_ALLOWED_DOMAINS.includes(emailDomain)) {
+      const allowedDomains = await getAllowedDomains();
+      if (allowedDomains.length > 0 && !allowedDomains.includes(emailDomain)) {
         console.error(`[MS SSO] Auto-Provisionierung abgelehnt, Domain nicht erlaubt: ${msEmail}`);
         return res.redirect(`${APP_URL}/login?error=domain_not_allowed`);
       }

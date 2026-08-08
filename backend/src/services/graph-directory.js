@@ -1,8 +1,11 @@
 const msal = require('@azure/msal-node');
+const { getSsoConfig, getNotifyFromEmail } = require('./sso-config');
 
-// App-only Microsoft-Graph-Zugriff (Client-Credentials-Flow) — separat von der
-// interaktiven SSO-App-Registrierung (auth-microsoft.js). Wird für die
-// Gastgeber-AD-Autocomplete, den Admin-Gegencheck und den Mailversand genutzt.
+// App-only Microsoft-Graph-Zugriff (Client-Credentials-Flow) — nutzt dieselbe
+// App-Registrierung wie die interaktive SSO-Anmeldung (auth-microsoft.js),
+// sofern dort zusätzlich die Application Permissions User.Read.All / Mail.Send
+// mit Admin-Zustimmung vergeben wurden. Wird für die Gastgeber-AD-Autocomplete,
+// den Admin-Gegencheck und den Mailversand genutzt.
 
 class DirectoryNotConfiguredError extends Error {
   constructor() {
@@ -11,19 +14,15 @@ class DirectoryNotConfiguredError extends Error {
   }
 }
 
-function getConfig() {
-  const tenantId = process.env.AZURE_DIRECTORY_TENANT_ID;
-  const clientId = process.env.AZURE_DIRECTORY_CLIENT_ID;
-  const clientSecret = process.env.AZURE_DIRECTORY_CLIENT_SECRET;
-  if (!tenantId || !clientId || !clientSecret) return null;
-  return { tenantId, clientId, clientSecret };
-}
-
 let cachedClient = null;
-function getClient() {
-  const config = getConfig();
+let cachedClientKey = null;
+
+async function getClient() {
+  const config = await getSsoConfig();
   if (!config) return null;
-  if (!cachedClient) {
+
+  const key = `${config.tenantId}:${config.clientId}`;
+  if (!cachedClient || cachedClientKey !== key) {
     cachedClient = new msal.ConfidentialClientApplication({
       auth: {
         clientId: config.clientId,
@@ -31,12 +30,13 @@ function getClient() {
         clientSecret: config.clientSecret,
       },
     });
+    cachedClientKey = key;
   }
   return cachedClient;
 }
 
 async function getAppToken() {
-  const client = getClient();
+  const client = await getClient();
   if (!client) throw new DirectoryNotConfiguredError();
   const result = await client.acquireTokenByClientCredential({
     scopes: ['https://graph.microsoft.com/.default'],
@@ -44,8 +44,8 @@ async function getAppToken() {
   return result.accessToken;
 }
 
-function isConfigured() {
-  return getConfig() !== null;
+async function isConfigured() {
+  return (await getSsoConfig()) !== null;
 }
 
 // Sucht Benutzer im Verzeichnis (Name oder Mail beginnt mit query), min. 3 Zeichen.
@@ -101,7 +101,7 @@ async function checkUser(email) {
 
 // Best-effort Mailversand — Fehler werden von den Aufrufern abgefangen.
 async function sendMail(to, subject, body) {
-  const fromMailbox = process.env.NOTIFY_FROM_EMAIL;
+  const fromMailbox = await getNotifyFromEmail();
   if (!fromMailbox) throw new DirectoryNotConfiguredError();
   const token = await getAppToken();
 

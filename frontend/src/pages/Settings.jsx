@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings2, Users, Key, Plus, Trash2, Pencil, X, Eye, EyeOff, DatabaseZap, UserCheck, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
+import { Settings2, Users, Key, Plus, Trash2, Pencil, X, Eye, EyeOff, DatabaseZap, UserCheck, ShieldCheck, ShieldAlert, ShieldQuestion, Cloud, Copy, Check } from 'lucide-react';
 import api from '../api/client';
 import { showToast } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -141,9 +141,9 @@ function HostsTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-400">Gastgeber werden automatisch aus dem Active Directory angelegt (Microsoft-Login oder AD-Autocomplete beim Einchecken). Hier lässt sich je Eintrag gegen das Verzeichnis gegenprüfen.</p>
+      <p className="text-xs text-gray-400">Gastgeber werden automatisch aus dem Verzeichnis angelegt (Microsoft-Login oder AD-Autocomplete beim Einchecken). Hier lässt sich je Eintrag gegen das Verzeichnis gegenprüfen.</p>
       {notConfigured && (
-        <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Verzeichnis-Zugriff nicht konfiguriert (AZURE_DIRECTORY_*-Variablen fehlen).</p>
+        <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Verzeichnis-Zugriff nicht konfiguriert — siehe Tab „Microsoft SSO".</p>
       )}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
@@ -460,6 +460,122 @@ function DataRetentionTab() {
   );
 }
 
+// ---- Microsoft SSO Tab ----
+function SsoTab() {
+  const [form, setForm] = useState({ tenantId: '', clientId: '', clientSecret: '', allowedDomains: '', notifyFromEmail: '' });
+  const [secretSet, setSecretSet] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const redirectUri = `${window.location.origin}/api/auth/microsoft/callback`;
+
+  const load = () => api.get('/settings').then(r => {
+    const s = r.data;
+    setForm({
+      tenantId: s.sso_tenant_id || '',
+      clientId: s.sso_client_id || '',
+      clientSecret: '',
+      allowedDomains: s.sso_allowed_domains || '',
+      notifyFromEmail: s.notify_from_email || '',
+    });
+    setSecretSet(!!s.sso_client_secret_set);
+  }).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const configured = secretSet && !!form.tenantId && !!form.clientId;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put('/settings', {
+        sso_tenant_id: form.tenantId.trim(),
+        sso_client_id: form.clientId.trim(),
+        sso_client_secret: form.clientSecret,
+        sso_allowed_domains: form.allowedDomains.trim(),
+        notify_from_email: form.notifyFromEmail.trim(),
+      });
+      showToast('SSO-Einstellungen gespeichert');
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler beim Speichern', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyRedirect = () => {
+    navigator.clipboard.writeText(redirectUri);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-800">Microsoft SSO</h3>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${configured ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${configured ? 'bg-green-500' : 'bg-gray-400'}`} />
+            {configured ? 'Konfiguriert' : 'Nicht konfiguriert'}
+          </span>
+        </div>
+        <p className="text-xs text-gray-400">
+          Eine einzige Azure-App-Registrierung deckt sowohl den Mitarbeiter-Login als auch die Verzeichnis-Anbindung (Gastgeber-Autocomplete, AD-Gegencheck, Ankunfts-Mails) ab.
+        </p>
+
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Tenant-ID</label>
+          <input value={form.tenantId} onChange={e => setForm(f => ({ ...f, tenantId: e.target.value }))} className={inp} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Client-ID</label>
+          <input value={form.clientId} onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))} className={inp} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Client Secret</label>
+          <input
+            type="password"
+            value={form.clientSecret}
+            onChange={e => setForm(f => ({ ...f, clientSecret: e.target.value }))}
+            className={inp}
+            placeholder={secretSet ? '•••••••• (gesetzt — leer lassen für unverändert)' : 'Client Secret eingeben'}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Erlaubte E-Mail-Domains</label>
+          <input value={form.allowedDomains} onChange={e => setForm(f => ({ ...f, allowedDomains: e.target.value }))} className={inp} placeholder="abatplus.de, abat.de" />
+          <p className="text-xs text-gray-400 mt-1">Kommagetrennt. Leer = keine Einschränkung für die automatische Konto-Anlage beim ersten SSO-Login.</p>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Absender-Postfach für Gastgeber-Mails</label>
+          <input type="email" value={form.notifyFromEmail} onChange={e => setForm(f => ({ ...f, notifyFromEmail: e.target.value }))} className={inp} placeholder="besucher@firma.de" />
+        </div>
+
+        <button onClick={save} disabled={saving} className="w-full py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+          {saving ? 'Speichern…' : 'Einstellungen speichern'}
+        </button>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+        <h4 className="text-sm font-semibold text-blue-900">Azure-Einrichtung</h4>
+        <div>
+          <p className="text-xs text-blue-700 mb-1">Umleitungs-URI (Redirect URI, Typ „Web"):</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs bg-white border border-blue-200 rounded-lg px-2.5 py-1.5 text-blue-900 break-all">{redirectUri}</code>
+            <button onClick={copyRedirect} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg flex-shrink-0">
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
+        </div>
+        <div className="text-xs text-blue-700 space-y-1">
+          <p><span className="font-semibold">Delegierte Berechtigungen</span> (Login): <code>openid</code>, <code>profile</code>, <code>email</code>, <code>User.Read</code></p>
+          <p><span className="font-semibold">Anwendungsberechtigungen</span> (Verzeichnis, Admin-Zustimmung erforderlich): <code>User.Read.All</code>, <code>Mail.Send</code></p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Main Settings ----
 export default function Settings() {
   const { user } = useAuth();
@@ -472,6 +588,7 @@ export default function Settings() {
     { key: 'password', label: 'Passwort', icon: Key },
     ...(isAdmin ? [{ key: 'users', label: 'Benutzer', icon: Users }] : []),
     ...(isAdmin ? [{ key: 'hosts', label: 'Gastgeber', icon: UserCheck }] : []),
+    ...(isAdmin ? [{ key: 'sso', label: 'Microsoft SSO', icon: Cloud }] : []),
   ];
 
   useEffect(() => {
@@ -501,6 +618,7 @@ export default function Settings() {
         {tab === 'password' && <PasswordTab />}
         {tab === 'users' && isAdmin && <UsersTab />}
         {tab === 'hosts' && isAdmin && <HostsTab />}
+        {tab === 'sso' && isAdmin && <SsoTab />}
       </div>
     </div>
   );

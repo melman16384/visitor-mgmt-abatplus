@@ -5,7 +5,7 @@ const graphDirectory = require('./graph-directory');
 // Wirft nie — Fehler werden geloggt, der Check-in-Vorgang darf dadurch nie fehlschlagen.
 async function notifyHostOfArrival(host, visitorName) {
   if (!host || !host.email) return;
-  if (!graphDirectory.isConfigured()) return;
+  if (!(await graphDirectory.isConfigured())) return;
 
   const setting = await db.prepare("SELECT value FROM system_settings WHERE key = 'notify_host_on_arrival'").get();
   if (setting && setting.value === 'false') return;

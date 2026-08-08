@@ -190,12 +190,12 @@ Standard-Zugangsdaten nach Erstinstallation:
 | Kontotypen | Nur diese Organisation |
 | Umleitungs-URI | `https://deine-domain.de/api/auth/microsoft/callback` |
 
-Benötigte Werte aus der App-Registrierung in `.env` eintragen:
+Benötigte Werte aus der App-Registrierung entweder in **Einstellungen → Microsoft SSO** eintragen (wirkt sofort, kein Neustart) oder als Fallback in `.env`:
 - `AZURE_CLIENT_ID` — Anwendungs-ID
 - `AZURE_TENANT_ID` — Verzeichnis-ID
 - `AZURE_CLIENT_SECRET` — Neues Clientgeheimnis
 
-API-Berechtigungen: `openid`, `profile`, `email`, `User.Read` (Administratorzustimmung erteilen).
+API-Berechtigungen: delegiert `openid`, `profile`, `email`, `User.Read`. Dieselbe Registrierung deckt auch die Gastgeber-Verzeichnis-Anbindung ab — dafür zusätzlich Anwendungsberechtigungen `User.Read.All`, `Mail.Send` hinzufügen (Administratorzustimmung erforderlich).
 
 ```bash
 pm2 restart visitor-mgmt --update-env
