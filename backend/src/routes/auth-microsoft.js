@@ -105,7 +105,7 @@ router.get('/callback', async (req, res) => {
     }
 
     // Existing user → login
-    let user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ? AND active = 1').get(msEmail);
+    let user = await db.prepare('SELECT * FROM users WHERE LOWER(email) = ? AND active = true').get(msEmail);
 
     if (!user) {
       const emailDomain = msEmail.split('@')[1];
@@ -117,15 +117,15 @@ router.get('/callback', async (req, res) => {
       // First login → create user + host
       const insertUser = db.prepare(`
         INSERT INTO users (name, email, password_hash, role, active)
-        VALUES (?, ?, '', 'user', 1)
+        VALUES (?, ?, '', 'user', true)
       `);
-      const userResult = insertUser.run(msName, msEmail);
+      const userResult = await insertUser.run(msName, msEmail);
       const newUserId = userResult.lastInsertRowid;
 
       // Auto-create host entry
-      findOrCreateHostByEmail(msName, msEmail);
+      await findOrCreateHostByEmail(msName, msEmail);
 
-      user = db.prepare('SELECT * FROM users WHERE id = ?').get(newUserId);
+      user = await db.prepare('SELECT * FROM users WHERE id = ?').get(newUserId);
       console.log(`[MS SSO] Neuer Benutzer erstellt: ${msEmail}`);
     }
 

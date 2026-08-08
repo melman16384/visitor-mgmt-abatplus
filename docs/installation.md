@@ -9,7 +9,7 @@ Diese Anleitung beschreibt die vollständige Erstinstallation auf einem frischen
 ## Inhaltsverzeichnis
 
 1. [Systemvoraussetzungen](#1-systemvoraussetzungen)
-2. [Node.js & Nginx installieren](#2-nodejs--nginx-installieren)
+2. [Node.js, Nginx & PostgreSQL installieren](#2-nodejs-nginx--postgresql-installieren)
 3. [Repository klonen](#3-repository-klonen)
 4. [Backend konfigurieren](#4-backend-konfigurieren)
 5. [Microsoft SSO einrichten (Azure)](#5-microsoft-sso-einrichten-azure)
@@ -33,13 +33,14 @@ Diese Anleitung beschreibt die vollständige Erstinstallation auf einem frischen
 | Disk | 2 GB |
 | Node.js | 22.x oder höher |
 | Nginx | aktuell |
+| PostgreSQL | 14 oder höher |
 | Domain | Bei Cloudflare verwaltet, DNS-Eintrag auf Server-IP zeigend |
 
 Das System benötigt im laufenden Betrieb keine externen Netzwerkverbindungen außer zu Microsoft Entra ID (für den SSO-Login).
 
 ---
 
-## 2. Node.js & Nginx installieren
+## 2. Node.js, Nginx & PostgreSQL installieren
 
 ```bash
 # System aktualisieren
@@ -52,20 +53,27 @@ apt install -y nodejs
 # Nginx installieren
 apt install -y nginx
 
-# sqlite3 CLI installieren (für Wartungsaufgaben)
-apt install -y sqlite3
-
-# Build-Tools installieren (benötigt für native Node-Module wie better-sqlite3)
-apt install -y build-essential
+# PostgreSQL installieren
+apt install -y postgresql
 
 # Versionen prüfen
 node -v    # Sollte v22.x oder höher anzeigen
 npm -v
 nginx -v
+psql --version
 
 # pm2 global installieren (Prozessmanager)
 npm install -g pm2
 ```
+
+Datenbank + eigene Rolle anlegen (einmalig, als `postgres`-User):
+
+```bash
+sudo -u postgres createuser visitormgmt_abatplus --pwprompt
+sudo -u postgres createdb -O visitormgmt_abatplus visitormgmt_abatplus
+```
+
+Das vergebene Passwort wird gleich in `.env` als `PG_PASSWORD` eingetragen.
 
 ---
 
@@ -110,8 +118,12 @@ PORT=3001
 # openssl rand -hex 64
 JWT_SECRET=<hier-eintragen>
 
-# Absoluter Pfad — nicht relativ!
-DB_PATH=/opt/visitor-mgmt-abatplus/backend/data/visitors.db
+# PostgreSQL-Verbindung (siehe Schritt 2 — dort angelegte Rolle/DB)
+PG_HOST=127.0.0.1
+PG_PORT=5432
+PG_DATABASE=visitormgmt_abatplus
+PG_USER=visitormgmt_abatplus
+PG_PASSWORD=<beim createuser vergebenes Passwort>
 
 # Öffentliche URL der App (ohne abschließenden Slash)
 APP_URL=https://deine-domain.de
@@ -127,11 +139,7 @@ AZURE_CLIENT_SECRET=
 # ADMIN_PASSWORD=SicheresPasswort123!
 ```
 
-Datenbankverzeichnis anlegen:
-
-```bash
-mkdir -p /opt/visitor-mgmt-abatplus/backend/data
-```
+Schema (Tabellen, Standard-Einstellungen, initialer Admin) wird beim ersten Start automatisch angelegt — kein manueller Migrationsschritt oder Datenverzeichnis nötig.
 
 > **Wichtig:** `JWT_SECRET` muss ein langer, zufälliger String sein. Niemals leer lassen, niemals in Git einchecken. Änderungen invalidieren alle bestehenden Tokens.
 
@@ -502,21 +510,33 @@ pm2 restart visitor-mgmt
 
 ## 13. Automatisches Backup
 
-Das Projekt bringt ein eigenes Backup-Skript mit: `/opt/visitor-mgmt-abatplus/backup.sh`. Es sichert die SQLite-Datenbank per `.backup`-Kommando nach `/opt/visitor-mgmt-abatplus/backups/` und löscht dort Backups, die älter als 30 Tage sind.
+Das Projekt bringt ein eigenes Backup-Skript mit: `/opt/visitor-mgmt-abatplus/backup.sh`. Es sichert die PostgreSQL-Datenbank per `pg_dump` (Custom-Format) nach `/opt/visitor-mgmt-abatplus/backups/` und löscht dort Backups, die älter als 30 Tage sind. Die Verbindungsdaten liest es aus `backend/.env` (`PG_*`).
 
 ```bash
 #!/bin/bash
 BACKUP_DIR="/opt/visitor-mgmt-abatplus/backups"
-DB_PATH="/opt/visitor-mgmt-abatplus/backend/data/visitors.db"
+ENV_FILE="/opt/visitor-mgmt-abatplus/backend/.env"
 KEEP_DAYS=30
 DATE=$(date +%Y-%m-%d)
 
+set -a
+source "$ENV_FILE"
+set +a
+
 mkdir -p "$BACKUP_DIR"
-sqlite3 "$DB_PATH" ".backup ${BACKUP_DIR}/visitors-${DATE}.db"
-find "$BACKUP_DIR" -name "visitors-*.db" -mtime +${KEEP_DAYS} -delete
+PGPASSWORD="$PG_PASSWORD" pg_dump -h "${PG_HOST:-127.0.0.1}" -p "${PG_PORT:-5432}" \
+  -U "$PG_USER" -d "$PG_DATABASE" -F c -f "${BACKUP_DIR}/visitors-${DATE}.dump"
+find "$BACKUP_DIR" -name "visitors-*.dump" -mtime +${KEEP_DAYS} -delete
 ```
 
-> **Bekannter, behobener Fehler:** In einer früheren Fassung verwies das Skript durch einen Copy-Paste-Fehler (vom Schwesterprojekt `visitor-mgmt`) auf `/opt/visitor-mgmt/backups` und `/opt/visitor-mgmt/backend/data/visitors.db` — also auf die **falsche** Datenbank. Beim Ausführen wäre dadurch nicht diese, sondern die Datenbank des anderen Projekts gesichert worden. Bei einer eigenständigen Installation unbedingt prüfen, dass `BACKUP_DIR` und `DB_PATH` im Skript auf das **eigene** Projektverzeichnis zeigen, bevor es eingeplant wird — besonders wenn das Skript von einer anderen Installation kopiert wurde.
+Rücksicherung im Notfall:
+
+```bash
+PGPASSWORD=<PG_PASSWORD aus .env> pg_restore -h 127.0.0.1 -U visitormgmt_abatplus \
+  -d visitormgmt_abatplus --clean -1 /opt/visitor-mgmt-abatplus/backups/visitors-<datum>.dump
+```
+
+> **Historischer Hinweis:** In einer früheren Fassung verwies das Skript durch einen Copy-Paste-Fehler (vom Schwesterprojekt `visitor-mgmt`) auf falsche, fest kodierte Pfade des anderen Projekts. Bei einer eigenständigen Installation unbedingt prüfen, dass `BACKUP_DIR` und die `.env`-Verbindungsdaten auf die **eigene** Datenbank zeigen, bevor das Skript eingeplant wird — besonders wenn es von einer anderen Installation kopiert wurde.
 
 Verzeichnis anlegen und Skript ausführbar machen:
 

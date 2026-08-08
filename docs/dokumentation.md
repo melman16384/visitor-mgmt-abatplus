@@ -119,8 +119,8 @@ Browser / Handy (Mitarbeiter)
                               ├── Routen: auth, visitors, visits,
                               │   hosts, preregistrations, users,
                               │   settings, dashboard
-                              └── SQLite-Datenbank
-                                  (better-sqlite3, synchron)
+                              └── PostgreSQL-Datenbank
+                                  (pg Pool, asynchron)
 ```
 
 **Technologie-Stack:**
@@ -131,13 +131,13 @@ Browser / Handy (Mitarbeiter)
 | Build-Tool | Vite | 8 |
 | CSS-Framework | Tailwind CSS | 4 |
 | Backend | Express.js | 5 |
-| Datenbank | SQLite via better-sqlite3 | — |
+| Datenbank | PostgreSQL via `pg` | 16 |
 | Authentifizierung | JWT (8h) + MSAL (Microsoft SSO) | — |
 | Prozessmanager | pm2 | — |
 | Webserver | Nginx | — |
 | CDN/Proxy | Cloudflare | — |
 
-**Warum SQLite?** Die App läuft als einzelne Instanz auf einem Server. SQLite benötigt keinen separaten Datenbankdienst, ist wartungsarm und für die erwartete Last (< 500 Besucher/Tag) vollständig ausreichend. better-sqlite3 arbeitet synchron — kein Callback-Chaos, kein Connection-Pool.
+**Warum PostgreSQL?** Ursprünglich lief die App auf SQLite (einzelne Instanz, kein separater Datenbankdienst nötig, für die erwartete Last < 500 Besucher/Tag ausreichend). Migriert auf PostgreSQL (lokale Instanz auf demselben Server) für bessere Nebenläufigkeit, Tooling und Zukunftssicherheit. `backend/src/db/database.js` kapselt den Zugriff über eine dünne Adapter-Schicht (`prepare(sql).get/all/run`, `exec`, `transaction`) mit derselben Aufrufsyntax wie vorher — darunter läuft es aber vollständig asynchron über einen `pg`-Connection-Pool.
 
 ---
 
@@ -169,9 +169,7 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── hosts-helper.js      # findOrCreateHostByEmail() — gemeinsame Gastgeber-Anlage-Logik
 │   │   │   └── notify-host.js       # Best-effort Gastgeber-Mail bei Ankunft
 │   │   └── index.js                 # App-Einstieg, Middleware, Route-Mounting
-│   ├── data/
-│   │   └── visitors.db              # SQLite-Datenbank (nicht in Git)
-│   ├── .env                         # Secrets — nicht in Git, nicht committen!
+│   ├── .env                         # Secrets (inkl. PG_* Verbindungsdaten) — nicht in Git, nicht committen!
 │   ├── .env.example                 # Vorlage ohne echte Werte
 │   └── package.json
 ├── frontend/
@@ -206,73 +204,74 @@ Browser / Handy (Mitarbeiter)
 
 ## 5. Datenbank
 
-**Datei:** `/opt/visitor-mgmt-abatplus/backend/data/visitors.db`  
-**Engine:** SQLite 3 via better-sqlite3  
+**Engine:** PostgreSQL 16, lokale Instanz auf demselben Server (Rolle/DB `visitormgmt_abatplus`, Verbindungsdaten in `backend/.env` als `PG_*`).  
+**Zugriff:** `backend/src/db/database.js` — dünner Adapter über einen `pg`-Connection-Pool mit derselben Aufrufsyntax wie das frühere SQLite-Setup (`prepare(sql).get/all/run`, `exec`, `transaction`), aber vollständig asynchron.  
 **Initialisierung:** Beim ersten Start von `index.js` wird das Schema automatisch angelegt. Neue Spalten werden per `ALTER TABLE … ADD COLUMN IF NOT EXISTS` idempotent hinzugefügt — kein manuelles Migrations-Skript nötig.
+**Backup:** `backup.sh` (`pg_dump -F c`) → `/opt/visitor-mgmt-abatplus/backups/*.dump`, täglich per Cron (siehe `docs/installation.md`).
 
 ### Tabellen
 
 #### `users` — Systembenutzer (Mitarbeiter mit Login)
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | INTEGER PK | Auto-Increment |
+| id | SERIAL PK | Auto-Increment |
 | name | TEXT NOT NULL | Anzeigename |
 | email | TEXT UNIQUE | Login-E-Mail (Kleinbuchstaben) |
 | password_hash | TEXT | bcrypt-Hash; leer bei reinen SSO-Nutzern |
 | role | TEXT | `admin` oder `user` |
-| active | INTEGER | 1 = aktiv, 0 = deaktiviert |
-| created_at | TEXT | ISO 8601 Timestamp |
+| active | BOOLEAN | true = aktiv, false = deaktiviert |
+| created_at | TIMESTAMPTZ | |
 
 #### `visitors` — Besucherstammdaten
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | INTEGER PK | |
+| id | SERIAL PK | |
 | first_name | TEXT NOT NULL | |
 | last_name | TEXT NOT NULL | |
 | company | TEXT | Unternehmen (optional) |
-| created_at | TEXT | Wann erstmals im System angelegt |
+| created_at | TIMESTAMPTZ | Wann erstmals im System angelegt |
 
 #### `visits` — Einzelne Besuche (ein Besucher kann mehrfach kommen)
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | INTEGER PK | |
+| id | SERIAL PK | |
 | visitor_id | INTEGER FK | → visitors.id |
 | host_id | INTEGER FK | → hosts.id (Ansprechpartner) |
-| checked_in_at | TEXT | Zeitstempel des Check-ins |
-| checked_out_at | TEXT | Zeitstempel des Check-outs; NULL = noch anwesend |
+| checked_in_at | TIMESTAMPTZ | Zeitstempel des Check-ins |
+| checked_out_at | TIMESTAMPTZ | Zeitstempel des Check-outs; NULL = noch anwesend |
 | status | TEXT | `active` (anwesend) oder `completed` (ausgecheckt) |
-| privacy_accepted | INTEGER | 1 = Datenschutz-Checkbox wurde gesetzt |
+| privacy_accepted | BOOLEAN | true = Datenschutz-Checkbox wurde gesetzt |
 | checked_in_by | INTEGER FK | → users.id — wer hat eingecheckt |
 | notes | TEXT | Freitext-Notiz |
 
 #### `hosts` — Gastgeber (Ansprechpartner für Besucher)
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | INTEGER PK | |
+| id | SERIAL PK | |
 | name | TEXT NOT NULL | |
 | email | TEXT | Firmenemail |
-| active | INTEGER | 1 = aktiv, erscheint in der Autocomplete/Zuordnung |
+| active | BOOLEAN | true = aktiv, erscheint in der Autocomplete/Zuordnung |
 | ad_object_id | TEXT | Objekt-ID aus dem Active Directory, falls über SSO-Login oder AD-Autocomplete angelegt |
-| created_at | TEXT | |
+| created_at | TIMESTAMPTZ | |
 
 > Gastgeber werden automatisch angelegt — beim Microsoft-Login des Mitarbeiters selbst, oder wenn beim Check-in/bei der Vorregistrierung ein Gastgeber über die AD-Autocomplete ausgewählt wird (`findOrCreateHostByEmail()` in `services/hosts-helper.js`). Es gibt keine eigene Gastgeber-Verwaltungsseite mehr; ein Admin-Gegencheck gegen das Verzeichnis ist unter Einstellungen → Gastgeber möglich (siehe Kapitel 7).
 
 #### `preregistrations` — Vorangemeldete Besucher
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | INTEGER PK | |
+| id | SERIAL PK | |
 | visitor_first_name | TEXT NOT NULL | |
 | visitor_last_name | TEXT NOT NULL | |
 | visitor_company | TEXT | |
 | host_id | INTEGER FK | → hosts.id |
-| expected_date | TEXT | YYYY-MM-DD (optional) |
-| expected_time | TEXT | HH:MM (optional) |
+| expected_date | DATE | optional |
+| expected_time | TIME | optional |
 | notes | TEXT | Pflichtfeld bei der Erstellung |
 | status | TEXT | `pending` → `checked_in` oder `cancelled` |
 | created_by | INTEGER FK | → users.id — wer hat vorregistriert |
-| created_at | TEXT | |
+| created_at | TIMESTAMPTZ | |
 
-> **Migration (Juli 2026):** `expected_date` war in der ursprünglichen Tabellendefinition fälschlich `NOT NULL`, obwohl das Datum laut Formular/Doku optional ist — das führte zu einem Fehler beim Anlegen einer Vorregistrierung ohne Datum. Da SQLite kein `ALTER COLUMN` kennt, migriert `database.js` die Tabelle beim nächsten Start automatisch per Rebuild (Daten bleiben erhalten).
+> **Migration (Juli 2026, SQLite-Ära):** `expected_date` war in der ursprünglichen Tabellendefinition fälschlich `NOT NULL`, obwohl das Datum laut Formular/Doku optional ist. Unter SQLite (kein `ALTER COLUMN`) wurde das per Tabellen-Rebuild gelöst; seit der Postgres-Migration (August 2026) ist die Spalte direkt per `ALTER TABLE … DROP NOT NULL` optional.
 
 #### `system_settings` — Schlüssel-Wert-Konfiguration
 | Key | Default | Beschreibung |
@@ -969,7 +968,11 @@ pm2 stop visitor-mgmt             # Anhalten
 |---|---|---|
 | `PORT` | Ja | Backend-Port (Standard: 3001) |
 | `JWT_SECRET` | Ja | Mindestens 64 zufällige Zeichen — `openssl rand -hex 64` |
-| `DB_PATH` | Ja | Absoluter Pfad zur SQLite-DB — nie relativ! |
+| `PG_HOST` | Ja | PostgreSQL-Host (i.d.R. `127.0.0.1`) |
+| `PG_PORT` | Ja | PostgreSQL-Port (Standard: `5432`) |
+| `PG_DATABASE` | Ja | Datenbankname (`visitormgmt_abatplus`) |
+| `PG_USER` | Ja | DB-Rolle (`visitormgmt_abatplus`) |
+| `PG_PASSWORD` | Ja | Passwort der DB-Rolle |
 | `APP_URL` | Ja | Öffentliche URL der App inkl. Schema, ohne Slash |
 | `AZURE_CLIENT_ID` | SSO | Client-ID der Azure App Registration |
 | `AZURE_TENANT_ID` | SSO | Tenant-ID des Entra ID-Verzeichnisses |
@@ -983,8 +986,6 @@ pm2 stop visitor-mgmt             # Anhalten
 | `ADMIN_PASSWORD` | Optional | Initiales Admin-Passwort |
 
 > **JWT_SECRET:** Niemals leer lassen, niemals in Git einchecken. Bei Änderung werden alle bestehenden Tokens ungültig — alle Nutzer müssen sich neu anmelden. `auth.js` und `auth-microsoft.js` werfen beim Start einen Fehler, wenn die Variable fehlt — es gibt keinen unsicheren Default-Fallback mehr (siehe [Kapitel 17, Sicherheit](#17-sicherheit)).
-
-> **DB_PATH absolut:** Ein relativer Pfad führt dazu, dass je nach Startverzeichnis eine andere DB geöffnet wird. Bei `pm2` ist das Arbeitsverzeichnis gesetzt, aber bei manuellen Starts kann es abweichen.
 
 > **AZURE_CLIENT_SECRET Ablauf:** Clientgeheimnisse laufen nach 1–2 Jahren ab (konfigurierbar in Azure). Bei Ablauf schlägt der Microsoft-Login still fehl. Rechtzeitig erneuern und `.env` aktualisieren.
 
@@ -1013,26 +1014,31 @@ cd /opt/visitor-mgmt-abatplus/frontend && npm run build
 pm2 restart visitor-mgmt
 
 # ── Datenbank ─────────────────────────────────────────────────
+# .env laden (PG_* Variablen) und psql-Shell öffnen
+set -a; source /opt/visitor-mgmt-abatplus/backend/.env; set +a
+PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE"
+
 # Tabellen anzeigen
-sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db ".tables"
+PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" -c '\dt'
 
 # Alle Benutzer anzeigen
-sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db \
-  "SELECT id, name, email, role, active FROM users;"
+PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
+  -c "SELECT id, name, email, role, active FROM users;"
 
 # Passwort zurücksetzen
 cd /opt/visitor-mgmt-abatplus/backend
 HASH=$(node -e "const b=require('bcryptjs'); b.hash('NeuesPasswort123!',12).then(h=>process.stdout.write(h))")
-sqlite3 data/visitors.db "UPDATE users SET password_hash='$HASH' WHERE email='admin@example.com';"
+PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
+  -c "UPDATE users SET password_hash='$HASH' WHERE email='admin@example.com';"
 
 # Benutzer auf admin hochstufen
-sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db \
-  "UPDATE users SET role='admin' WHERE email='max.mustermann@abat.de';"
+PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
+  -c "UPDATE users SET role='admin' WHERE email='max.mustermann@abat.de';"
 
-# Datenbank-Backup
+# Datenbank-Backup (siehe auch backup.sh, läuft täglich per Cron)
 mkdir -p /root/backups
-sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db \
-  ".backup /root/backups/visitors-$(date +%Y%m%d-%H%M).db"
+PGPASSWORD="$PG_PASSWORD" pg_dump -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
+  -F c -f "/root/backups/visitors-$(date +%Y%m%d-%H%M).dump"
 
 # ── API-Tests ─────────────────────────────────────────────────
 curl https://visitorplus.luwilab.work/api/health
@@ -1075,7 +1081,7 @@ tail -f /root/.pm2/logs/visitor-mgmt-error.log
 
 - Der PM2-Prozess läuft **nicht mehr als root**. Ein dedizierter, unprivilegierter Systembenutzer `svc-visitormgmtplus` wurde angelegt; `/opt/visitor-mgmt-abatplus` gehört vollständig diesem Benutzer. In `/opt/ecosystem.config.js` ist für den Eintrag `visitor-mgmt-abatplus` `uid: 'svc-visitormgmtplus'` / `gid: 'svc-visitormgmtplus'` gesetzt.
 - `backend/.env` wurde von `644` (world-readable) auf **`600`** geändert — die Datei enthält JWT-Secret und Azure/MSAL-Clientgeheimnis.
-- SQLite-Datenbank- und Backup-Dateien wurden auf **`640`** gesetzt, Eigentümer jeweils `svc-visitormgmtplus`.
+- Backup-Dateien (`backups/*.dump`) gehören `svc-visitormgmtplus`. (Historisch, aus der SQLite-Ära: Datenbank- und Backup-Dateien wurden auf `640` gesetzt — seit der Postgres-Migration liegen keine DB-Dateien mehr im Dateisystem des Projekts, nur noch die `pg_dump`-Backups.)
 
 ### JWT & Zugangsdaten
 
@@ -1091,9 +1097,13 @@ tail -f /root/.pm2/logs/visitor-mgmt-error.log
 
 ### Backup-Skript-Bug behoben
 
-`/opt/visitor-mgmt-abatplus/backup.sh` verwies durch einen Copy-Paste-Fehler (vom Schwesterprojekt visitor-mgmt) auf falsche, fest kodierte Pfade: `/opt/visitor-mgmt/backups` und `/opt/visitor-mgmt/backend/data/visitors.db` — **die Datenbank des jeweils anderen Projekts**. Wäre das Skript in diesem Zustand gelaufen, hätte es die falsche Datenbank ins falsche Verzeichnis gesichert. Das Skript referenziert jetzt korrekt `/opt/visitor-mgmt-abatplus/backups` und `/opt/visitor-mgmt-abatplus/backend/data/visitors.db`.
+`/opt/visitor-mgmt-abatplus/backup.sh` verwies durch einen Copy-Paste-Fehler (vom Schwesterprojekt visitor-mgmt) auf falsche, fest kodierte Pfade des anderen Projekts — **die Datenbank des jeweils anderen Projekts**. Wäre das Skript in diesem Zustand gelaufen, hätte es die falsche Datenbank ins falsche Verzeichnis gesichert. Das Skript referenziert jetzt korrekt `/opt/visitor-mgmt-abatplus/backups` und (seit der Postgres-Migration, siehe unten) die eigenen `PG_*`-Verbindungsdaten aus `backend/.env`.
 
 Zusätzlich rief bis dahin **kein Cron-Job und kein Scheduler** das Skript überhaupt auf — Backups waren dadurch de facto nie erstellt worden. Ein Cron-Eintrag wurde ergänzt: `/etc/cron.d/visitor-mgmt-backups`, läuft täglich um 02:00 Uhr als `svc-visitormgmtplus`, Logausgabe nach `logs/backup.log`. Details siehe [installation.md, Kapitel 13](./installation.md#13-automatisches-backup).
+
+### Datenbank von SQLite auf PostgreSQL migriert (August 2026)
+
+Aus SQLite (better-sqlite3, synchron, Einzeldatei) wurde auf PostgreSQL 16 (lokale Instanz auf demselben Server, asynchroner Zugriff über einen `pg`-Connection-Pool) migriert — siehe [Kapitel 5, Datenbank](#5-datenbank) für Details zu Schema und Zugriffsschicht. Bestehende Daten wurden 1:1 unter Beibehaltung der IDs übernommen. Spaltentypen wurden dabei modernisiert (native `BOOLEAN`, `TIMESTAMPTZ`/`DATE` statt SQLite-typischem `INTEGER 0/1`/`TEXT`). `backup.sh` nutzt seitdem `pg_dump` statt `sqlite3 .backup`.
 
 ### Offener Punkt — noch nicht abschließend geklärt
 
@@ -1178,26 +1188,25 @@ nginx -t   # Immer zuerst testen — zeigt Syntax-Fehler
 systemctl reload nginx
 ```
 
-### `npm install` schlägt fehl — better-sqlite3 / node-gyp
-
-**Fehler `not found: make`** → Build-Tools fehlen:
-```bash
-apt install -y build-essential
-```
+### `npm install` schlägt fehl
 
 **Fehler `unable to verify the first certificate`** → SSL-Zertifikat nicht verifizierbar (z.B. Corporate Proxy):
 ```bash
 NODE_OPTIONS=--use-system-ca npm install
 ```
 
-Beide Fixes kombinieren falls nötig:
+### Backend startet nicht — `ECONNREFUSED` auf PostgreSQL-Port
+
+→ PostgreSQL läuft nicht oder `PG_*`-Variablen in `.env` sind falsch:
 ```bash
-apt install -y build-essential
-NODE_OPTIONS=--use-system-ca npm install
+systemctl status postgresql
+set -a; source /opt/visitor-mgmt-abatplus/backend/.env; set +a
+PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" -c '\conninfo'
 ```
 
-### Datenbank beschädigt / gesperrt
+### Datenbank-Integrität prüfen
 ```bash
-sqlite3 /opt/visitor-mgmt-abatplus/backend/data/visitors.db "PRAGMA integrity_check;"
-# Ausgabe sollte "ok" sein
+set -a; source /opt/visitor-mgmt-abatplus/backend/.env; set +a
+PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" -c "SELECT 1;"
+# Verbindungsfehler statt Ergebnis = DB nicht erreichbar/beschädigt
 ```

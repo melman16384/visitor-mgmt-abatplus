@@ -59,15 +59,18 @@ app.use((req, res) => {
 
 // Init DB + start
 const { cleanup: auditCleanup } = require('./services/audit-log');
-require('./db/database');
+const { dbReady } = require('./db/database');
 auditCleanup();
 
 const { scheduleNext } = require('./services/auto-checkout');
 const { scheduleRetention } = require('./services/data-retention');
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`✓ Besucherverwaltung Backend läuft auf Port ${PORT}`);
-  scheduleNext();
-  scheduleRetention();
+
+dbReady.then(() => {
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log(`✓ Besucherverwaltung Backend läuft auf Port ${PORT}`);
+    scheduleNext();
+    scheduleRetention();
+  });
 });
 
 module.exports = app;

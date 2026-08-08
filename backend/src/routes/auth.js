@@ -12,12 +12,12 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // POST /login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'E-Mail und Passwort erforderlich' });
   }
-  const user = db.prepare('SELECT * FROM users WHERE email = ? AND active = 1').get(email);
+  const user = await db.prepare('SELECT * FROM users WHERE email = ? AND active = true').get(email);
   if (!user) {
     try { log('LOGIN_FAILED', email, 'Benutzer nicht gefunden'); } catch {}
     return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
@@ -46,7 +46,7 @@ router.post('/logout', (req, res) => {
 });
 
 // PUT /change-password
-router.put('/change-password', authenticate, (req, res) => {
+router.put('/change-password', authenticate, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Aktuelles und neues Passwort erforderlich' });
@@ -54,12 +54,12 @@ router.put('/change-password', authenticate, (req, res) => {
   if (newPassword.length < 8) {
     return res.status(400).json({ error: 'Neues Passwort muss mindestens 8 Zeichen lang sein' });
   }
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
     return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
   }
   const newHash = bcrypt.hashSync(newPassword, 12);
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
+  await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
   res.json({ message: 'Passwort erfolgreich geändert' });
 });
 

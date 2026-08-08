@@ -5,24 +5,24 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const router = express.Router();
 const adminOnly = [authenticate, requireRole(['admin'])];
 
-const getSettings = (req, res) => {
-  const rows = db.prepare('SELECT key, value FROM system_settings').all();
+const getSettings = async (req, res) => {
+  const rows = await db.prepare('SELECT key, value FROM system_settings').all();
   res.json(Object.fromEntries(rows.map(r => [r.key, r.value])));
 };
 
 router.get('/', ...adminOnly, getSettings);
 router.get('/system', ...adminOnly, getSettings);
 
-const putSettings = (req, res) => {
+const putSettings = async (req, res) => {
   const allowed = ['auto_checkout_enabled', 'auto_checkout_time', 'data_retention_days', 'notify_host_on_arrival'];
-  const upsert = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');
-  const tx = db.transaction((updates) => {
+  const upsert = db.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value');
+  const tx = db.transaction(async (updates) => {
     for (const [key, value] of Object.entries(updates)) {
-      if (allowed.includes(key)) upsert.run(key, String(value));
+      if (allowed.includes(key)) await upsert.run(key, String(value));
     }
   });
-  tx(req.body);
-  const rows = db.prepare('SELECT key, value FROM system_settings').all();
+  await tx(req.body);
+  const rows = await db.prepare('SELECT key, value FROM system_settings').all();
   res.json(Object.fromEntries(rows.map(r => [r.key, r.value])));
 };
 

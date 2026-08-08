@@ -6,9 +6,9 @@ const graphDirectory = require('../services/graph-directory');
 const router = express.Router();
 
 // GET / - public for check-in form dropdown
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { search = '' } = req.query;
-  let where = ['h.active = 1'];
+  let where = ['h.active = true'];
   let params = [];
 
   if (search) {
@@ -16,7 +16,7 @@ router.get('/', (req, res) => {
     params.push(`%${search}%`, `%${search}%`);
   }
 
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT h.id, h.name, h.email, h.active, h.created_at
     FROM hosts h
     WHERE ${where.join(' AND ')}
@@ -44,7 +44,7 @@ router.get('/search-ad', authenticate, async (req, res) => {
 
 // GET /:id/ad-check — Admin-Gegencheck: lokaler Host vs. Verzeichnis
 router.get('/:id/ad-check', authenticate, requireRole(['admin']), async (req, res) => {
-  const host = db.prepare('SELECT * FROM hosts WHERE id = ?').get(req.params.id);
+  const host = await db.prepare('SELECT * FROM hosts WHERE id = ?').get(req.params.id);
   if (!host) return res.status(404).json({ error: 'Gastgeber nicht gefunden' });
   if (!host.email) return res.json({ status: 'no_email' });
   if (!graphDirectory.isConfigured()) {
@@ -68,32 +68,32 @@ router.get('/:id/ad-check', authenticate, requireRole(['admin']), async (req, re
 });
 
 // GET /:id
-router.get('/:id', authenticate, (req, res) => {
-  const host = db.prepare('SELECT id, name, email, active, created_at FROM hosts WHERE id = ?').get(req.params.id);
+router.get('/:id', authenticate, async (req, res) => {
+  const host = await db.prepare('SELECT id, name, email, active, created_at FROM hosts WHERE id = ?').get(req.params.id);
   if (!host) return res.status(404).json({ error: 'Mitarbeiter nicht gefunden' });
   res.json(host);
 });
 
 // POST /
-router.post('/', authenticate, requireRole(['admin']), (req, res) => {
+router.post('/', authenticate, requireRole(['admin']), async (req, res) => {
   const { name, email } = req.body;
   if (!name) return res.status(400).json({ error: 'Name erforderlich' });
 
-  const result = db.prepare('INSERT INTO hosts (name, email) VALUES (?, ?)').run(name, email || null);
-  res.status(201).json(db.prepare('SELECT id, name, email, active, created_at FROM hosts WHERE id = ?').get(result.lastInsertRowid));
+  const result = await db.prepare('INSERT INTO hosts (name, email) VALUES (?, ?)').run(name, email || null);
+  res.status(201).json(await db.prepare('SELECT id, name, email, active, created_at FROM hosts WHERE id = ?').get(result.lastInsertRowid));
 });
 
 // PUT /:id
-router.put('/:id', authenticate, requireRole(['admin']), (req, res) => {
+router.put('/:id', authenticate, requireRole(['admin']), async (req, res) => {
   const { name, email } = req.body;
   if (!name) return res.status(400).json({ error: 'Name erforderlich' });
-  db.prepare('UPDATE hosts SET name = ?, email = ? WHERE id = ?').run(name, email || null, req.params.id);
-  res.json(db.prepare('SELECT id, name, email, active, created_at FROM hosts WHERE id = ?').get(req.params.id));
+  await db.prepare('UPDATE hosts SET name = ?, email = ? WHERE id = ?').run(name, email || null, req.params.id);
+  res.json(await db.prepare('SELECT id, name, email, active, created_at FROM hosts WHERE id = ?').get(req.params.id));
 });
 
 // DELETE /:id — soft delete
-router.delete('/:id', authenticate, requireRole(['admin']), (req, res) => {
-  db.prepare('UPDATE hosts SET active = 0 WHERE id = ?').run(req.params.id);
+router.delete('/:id', authenticate, requireRole(['admin']), async (req, res) => {
+  await db.prepare('UPDATE hosts SET active = false WHERE id = ?').run(req.params.id);
   res.json({ message: 'Mitarbeiter deaktiviert' });
 });
 

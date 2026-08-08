@@ -10,7 +10,6 @@
   "dependencies": {
     "@azure/msal-node": "^5.2.5",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -21,6 +20,7 @@
     "nodemailer": "^9.0.1",
     "otplib": "^13.4.1",
     "pdfkit": "^0.19.1",
+    "pg": "^8.22.0",
     "qrcode": "^1.5.3"
   },
   "devDependencies": {

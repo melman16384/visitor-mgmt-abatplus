@@ -5,22 +5,28 @@ const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 
 // GET /stats
-router.get('/stats', authenticate, (req, res) => {
+router.get('/stats', authenticate, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const weekStart = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
 
-  const todayTotal = db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_in_at) = ?`).get(today).c;
-  const currentlyIn = db.prepare(`SELECT COUNT(*) as c FROM visits WHERE status = 'active'`).get().c;
-  const checkedOutToday = db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_out_at) = ? AND status = 'completed'`).get(today).c;
-  const thisWeekTotal = db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_in_at) >= ?`).get(weekStart).c;
-  const pendingPrereg = db.prepare(`SELECT COUNT(*) as c FROM preregistrations WHERE status = 'pending' AND expected_date >= ?`).get(today).c;
+  const todayTotal = (await db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_in_at) = ?`).get(today)).c;
+  const currentlyIn = (await db.prepare(`SELECT COUNT(*) as c FROM visits WHERE status = 'active'`).get()).c;
+  const checkedOutToday = (await db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_out_at) = ? AND status = 'completed'`).get(today)).c;
+  const thisWeekTotal = (await db.prepare(`SELECT COUNT(*) as c FROM visits WHERE date(checked_in_at) >= ?`).get(weekStart)).c;
+  const pendingPrereg = (await db.prepare(`SELECT COUNT(*) as c FROM preregistrations WHERE status = 'pending' AND expected_date >= ?`).get(today)).c;
 
-  res.json({ todayTotal, currentlyIn, checkedOutToday, thisWeekTotal, pendingPrereg });
+  res.json({
+    todayTotal: parseInt(todayTotal, 10),
+    currentlyIn: parseInt(currentlyIn, 10),
+    checkedOutToday: parseInt(checkedOutToday, 10),
+    thisWeekTotal: parseInt(thisWeekTotal, 10),
+    pendingPrereg: parseInt(pendingPrereg, 10),
+  });
 });
 
 // GET /recent
-router.get('/recent', authenticate, (req, res) => {
-  const rows = db.prepare(`
+router.get('/recent', authenticate, async (req, res) => {
+  const rows = await db.prepare(`
     SELECT v.id, v.checked_in_at, v.checked_out_at, v.status,
            vi.first_name, vi.last_name, vi.company,
            h.name as host_name,
@@ -37,12 +43,12 @@ router.get('/recent', authenticate, (req, res) => {
 });
 
 // GET /chart
-router.get('/chart', authenticate, (req, res) => {
-  const rows = db.prepare(`
-    SELECT date(checked_in_at) as date, COUNT(*) as count
+router.get('/chart', authenticate, async (req, res) => {
+  const rows = await db.prepare(`
+    SELECT to_char(checked_in_at, 'YYYY-MM-DD') as date, COUNT(*) as count
     FROM visits
-    WHERE date(checked_in_at) >= date('now', '-14 days')
-    GROUP BY date(checked_in_at)
+    WHERE checked_in_at >= now() - interval '14 days'
+    GROUP BY to_char(checked_in_at, 'YYYY-MM-DD')
     ORDER BY date ASC
   `).all();
 
@@ -51,7 +57,7 @@ router.get('/chart', authenticate, (req, res) => {
     const d = new Date(Date.now() - i * 86400000);
     const dateStr = d.toISOString().split('T')[0];
     const found = rows.find(r => r.date === dateStr);
-    data.push({ date: dateStr, count: found ? found.count : 0 });
+    data.push({ date: dateStr, count: found ? parseInt(found.count, 10) : 0 });
   }
   res.json(data);
 });

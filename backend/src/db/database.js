@@ -1,78 +1,128 @@
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const path = require('path');
-const fs = require('fs');
 
-const dbPath = process.env.DB_PATH || './data/visitors.db';
-const dbDir = path.dirname(path.resolve(dbPath));
+const pool = new Pool({
+  host: process.env.PG_HOST || '127.0.0.1',
+  port: parseInt(process.env.PG_PORT || '5432', 10),
+  database: process.env.PG_DATABASE,
+  user: process.env.PG_USER,
+  password: process.env.PG_PASSWORD,
+});
 
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+// Converts a `?`-style query (better-sqlite3 convention, kept across all call sites)
+// into Postgres's `$1, $2, ...` positional syntax.
+function toPgQuery(sql) {
+  let i = 0;
+  return sql.replace(/\?/g, () => `$${++i}`);
 }
 
-const db = new Database(path.resolve(dbPath));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+// All tables that use .run() for INSERT have an `id` SERIAL primary key — except
+// system_settings, keyed by `key` — so we can auto-append RETURNING id to preserve
+// the better-sqlite3 `lastInsertRowid` shape everywhere else.
+function withReturningId(sql) {
+  const trimmed = sql.trim();
+  if (/^insert\s+into\s+system_settings/i.test(trimmed)) return sql;
+  if (/^insert/i.test(trimmed) && !/returning/i.test(trimmed)) {
+    return `${sql} RETURNING id`;
+  }
+  return sql;
+}
 
-function initializeDatabase() {
-  db.exec(`
+function prepare(sql) {
+  const pgSql = toPgQuery(sql);
+  const pgSqlWithReturning = toPgQuery(withReturningId(sql));
+  return {
+    async get(...params) {
+      const { rows } = await pool.query(pgSql, params);
+      return rows[0];
+    },
+    async all(...params) {
+      const { rows } = await pool.query(pgSql, params);
+      return rows;
+    },
+    async run(...params) {
+      const { rows, rowCount } = await pool.query(pgSqlWithReturning, params);
+      return { changes: rowCount, lastInsertRowid: rows[0] ? rows[0].id : undefined };
+    },
+  };
+}
+
+async function exec(sql) {
+  await pool.query(sql);
+}
+
+function transaction(fn) {
+  return async (...args) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await fn(...args);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  };
+}
+
+async function initializeDatabase() {
+  await exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT DEFAULT 'user',
-      active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT now()
     );
 
     CREATE TABLE IF NOT EXISTS hosts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT,
       phone TEXT,
       department TEXT,
-      active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT now()
     );
 
     CREATE TABLE IF NOT EXISTS visitors (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       first_name TEXT NOT NULL,
       last_name TEXT NOT NULL,
       email TEXT,
       phone TEXT,
       company TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMPTZ DEFAULT now()
     );
 
     CREATE TABLE IF NOT EXISTS visits (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      visitor_id INTEGER NOT NULL,
-      host_id INTEGER,
-      checked_in_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      checked_out_at DATETIME,
+      id SERIAL PRIMARY KEY,
+      visitor_id INTEGER NOT NULL REFERENCES visitors(id),
+      host_id INTEGER REFERENCES hosts(id),
+      checked_in_at TIMESTAMPTZ DEFAULT now(),
+      checked_out_at TIMESTAMPTZ,
       notes TEXT,
       status TEXT DEFAULT 'active',
-      privacy_accepted INTEGER DEFAULT 0,
-      checked_in_by INTEGER,
-      FOREIGN KEY (visitor_id) REFERENCES visitors(id),
-      FOREIGN KEY (host_id) REFERENCES hosts(id),
-      FOREIGN KEY (checked_in_by) REFERENCES users(id)
+      privacy_accepted BOOLEAN DEFAULT false,
+      checked_in_by INTEGER REFERENCES users(id)
     );
 
     CREATE TABLE IF NOT EXISTS preregistrations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       visitor_first_name TEXT NOT NULL,
       visitor_last_name TEXT NOT NULL,
       visitor_company TEXT,
-      host_id INTEGER,
+      host_id INTEGER REFERENCES hosts(id),
       expected_date DATE,
       expected_time TIME,
       notes TEXT,
       status TEXT DEFAULT 'pending',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (host_id) REFERENCES hosts(id)
+      created_at TIMESTAMPTZ DEFAULT now()
     );
 
     CREATE TABLE IF NOT EXISTS system_settings (
@@ -80,91 +130,51 @@ function initializeDatabase() {
       value TEXT NOT NULL
     );
   `);
+
+  // Default system settings
+  const settingDefaults = {
+    auto_checkout_enabled: 'true',
+    auto_checkout_time: '20:00',
+    data_retention_days: '365',
+    notify_host_on_arrival: 'true',
+  };
+  const insertSetting = prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING');
+  for (const [k, v] of Object.entries(settingDefaults)) {
+    await insertSetting.run(k, v);
+  }
+
+  // --- Migrations from old schema ---
+  await exec('DROP TABLE IF EXISTS watchlist');
+  await exec('DROP TABLE IF EXISTS parking_spots');
+  await exec('DROP TABLE IF EXISTS visit_documents');
+  await exec('DROP TABLE IF EXISTS user_locations');
+  await exec('DROP TABLE IF EXISTS visit_purposes');
+  await exec('DROP TABLE IF EXISTS locations');
+
+  await exec('ALTER TABLE visits ADD COLUMN IF NOT EXISTS checked_in_by INTEGER REFERENCES users(id)');
+  await exec('ALTER TABLE visits ADD COLUMN IF NOT EXISTS privacy_accepted BOOLEAN DEFAULT false');
+  await exec('ALTER TABLE hosts ADD COLUMN IF NOT EXISTS ad_object_id TEXT');
+  await exec('ALTER TABLE preregistrations ALTER COLUMN expected_date DROP NOT NULL');
+
+  await exec("UPDATE users SET role = 'admin' WHERE role IN ('superadmin', 'admin')");
+  await exec("UPDATE users SET role = 'user' WHERE role = 'receptionist'");
+
+  // Ensure initial admin exists
+  const userCount = await prepare('SELECT COUNT(*) as c FROM users').get();
+  if (parseInt(userCount.c, 10) === 0) {
+    const email    = process.env.ADMIN_EMAIL    || 'admin@example.com';
+    const password = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
+    const name     = process.env.ADMIN_NAME     || 'Administrator';
+    const hash = bcrypt.hashSync(password, 12);
+    await prepare('INSERT INTO users (name, email, password_hash, role, active) VALUES (?, ?, ?, ?, ?)')
+      .run(name, email, hash, 'admin', true);
+    console.log(`[init] Admin-Benutzer erstellt: ${email}`);
+  }
 }
 
-initializeDatabase();
+const dbReady = initializeDatabase().catch((err) => {
+  console.error('[db] Initialisierung fehlgeschlagen:', err);
+  process.exit(1);
+});
 
-// Default system settings
-const settingDefaults = {
-  auto_checkout_enabled: 'true',
-  auto_checkout_time: '20:00',
-  data_retention_days: '365',
-  notify_host_on_arrival: 'true',
-};
-const insertSetting = db.prepare('INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)');
-Object.entries(settingDefaults).forEach(([k, v]) => insertSetting.run(k, v));
-
-// --- Migrations from old schema ---
-
-// Drop old tables
-db.exec('DROP TABLE IF EXISTS watchlist');
-db.exec('DROP TABLE IF EXISTS parking_spots');
-db.exec('DROP TABLE IF EXISTS visit_documents');
-db.exec('DROP TABLE IF EXISTS user_locations');
-db.exec('DROP TABLE IF EXISTS visit_purposes');
-db.exec('DROP TABLE IF EXISTS locations');
-
-// Migrate visits: add checked_in_by + privacy_accepted if missing
-const visitsInfo = db.prepare('PRAGMA table_info(visits)').all();
-if (!visitsInfo.find(c => c.name === 'checked_in_by')) {
-  db.exec('ALTER TABLE visits ADD COLUMN checked_in_by INTEGER REFERENCES users(id)');
-}
-if (!visitsInfo.find(c => c.name === 'privacy_accepted')) {
-  db.exec('ALTER TABLE visits ADD COLUMN privacy_accepted INTEGER DEFAULT 0');
-}
-
-// Remove unused visits columns (SQLite only supports DROP COLUMN from 3.35+)
-// We leave extra columns in place — they are simply ignored in queries.
-
-// Migrate hosts: add ad_object_id if missing (Verzeichnis-gestützte Gastgeber)
-const hostsInfo = db.prepare('PRAGMA table_info(hosts)').all();
-if (!hostsInfo.find(c => c.name === 'ad_object_id')) {
-  db.exec('ALTER TABLE hosts ADD COLUMN ad_object_id TEXT');
-}
-
-// Migrate preregistrations: expected_date muss optional sein (Datum ist laut Doku/Frontend
-// kein Pflichtfeld), war aber in der ursprünglichen CREATE-TABLE-Anweisung NOT NULL.
-// SQLite kennt kein ALTER COLUMN — Constraint-Entfernung erfordert einen Tabellen-Rebuild.
-const preregInfo = db.prepare('PRAGMA table_info(preregistrations)').all();
-const expectedDateCol = preregInfo.find(c => c.name === 'expected_date');
-if (expectedDateCol && expectedDateCol.notnull) {
-  db.transaction(() => {
-    db.exec(`
-      CREATE TABLE preregistrations_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        visitor_first_name TEXT NOT NULL,
-        visitor_last_name TEXT NOT NULL,
-        visitor_company TEXT,
-        host_id INTEGER,
-        expected_date DATE,
-        expected_time TIME,
-        notes TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (host_id) REFERENCES hosts(id)
-      );
-      INSERT INTO preregistrations_new SELECT * FROM preregistrations;
-      DROP TABLE preregistrations;
-      ALTER TABLE preregistrations_new RENAME TO preregistrations;
-    `);
-  })();
-  console.log('[migration] preregistrations.expected_date auf optional migriert');
-}
-
-// Migrate user roles: superadmin/admin → admin, receptionist → user
-db.exec("UPDATE users SET role = 'admin' WHERE role IN ('superadmin', 'admin')");
-db.exec("UPDATE users SET role = 'user' WHERE role = 'receptionist'");
-
-// Ensure initial admin exists
-const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get();
-if (userCount.c === 0) {
-  const email    = process.env.ADMIN_EMAIL    || 'admin@example.com';
-  const password = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
-  const name     = process.env.ADMIN_NAME     || 'Administrator';
-  const hash = bcrypt.hashSync(password, 12);
-  db.prepare('INSERT INTO users (name, email, password_hash, role, active) VALUES (?, ?, ?, ?, 1)')
-    .run(name, email, hash, 'admin');
-  console.log(`[init] Admin-Benutzer erstellt: ${email}`);
-}
-
-module.exports = db;
+module.exports = { prepare, exec, transaction, dbReady, pool };

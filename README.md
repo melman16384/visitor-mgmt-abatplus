@@ -2,7 +2,7 @@
 
 Schlanke, mitarbeitergesteuerte Besucherverwaltung für abat+. Mitarbeiter checken Besucher direkt vom eigenen Desktop oder Handy ein — kein Empfangskiosk, keine Selbstbedienung.
 
-**Stack:** React 19 · Vite · Tailwind CSS 4 · Express.js 5 · SQLite · JWT · Microsoft SSO (MSAL)
+**Stack:** React 19 · Vite · Tailwind CSS 4 · Express.js 5 · PostgreSQL · JWT · Microsoft SSO (MSAL)
 
 ---
 
@@ -31,8 +31,15 @@ Schlanke, mitarbeitergesteuerte Besucherverwaltung für abat+. Mitarbeiter check
 ```bash
 # Node.js 22+
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt install -y nodejs nginx
+apt install -y nodejs nginx postgresql
 npm install -g pm2
+```
+
+Datenbank + Rolle anlegen (einmalig):
+
+```bash
+sudo -u postgres createuser visitormgmt_abatplus --pwprompt
+sudo -u postgres createdb -O visitormgmt_abatplus visitormgmt_abatplus
 ```
 
 ### 1. Repository klonen
@@ -61,7 +68,11 @@ nano .env
 ```env
 PORT=3001
 JWT_SECRET=<openssl rand -hex 64>
-DB_PATH=/opt/visitor-mgmt-abatplus/backend/data/visitors.db
+PG_HOST=127.0.0.1
+PG_PORT=5432
+PG_DATABASE=visitormgmt_abatplus
+PG_USER=visitormgmt_abatplus
+PG_PASSWORD=<beim createuser vergebenes Passwort>
 APP_URL=https://deine-domain.de
 
 # Microsoft SSO (Azure App Registration)
@@ -74,9 +85,7 @@ AZURE_CLIENT_SECRET=
 # ADMIN_PASSWORD=SicheresPasswort123!
 ```
 
-```bash
-mkdir -p /opt/visitor-mgmt-abatplus/backend/data
-```
+Schema (Tabellen, Standard-Einstellungen, initialer Admin) wird beim ersten Start automatisch angelegt — kein manueller Migrationsschritt nötig.
 
 ### 4. Frontend bauen
 
@@ -209,5 +218,6 @@ pm2 restart visitor-mgmt
 ```bash
 cd /opt/visitor-mgmt-abatplus/backend
 HASH=$(node -e "const b=require('bcryptjs'); b.hash('NeuesPasswort123!',12).then(h=>process.stdout.write(h))")
-sqlite3 data/visitors.db "UPDATE users SET password_hash='$HASH' WHERE email='admin@example.com';"
+PGPASSWORD=<PG_PASSWORD aus .env> psql -h 127.0.0.1 -U visitormgmt_abatplus -d visitormgmt_abatplus \
+  -c "UPDATE users SET password_hash='$HASH' WHERE email='admin@example.com';"
 ```
