@@ -9,7 +9,7 @@ const adminOnly = [authenticate, requireRole(['admin'])];
 const SECRET_KEYS = ['sso_client_secret'];
 
 const getSettings = async (req, res) => {
-  const rows = await db.prepare('SELECT key, value FROM system_settings').all();
+  const rows = await db.prepare('SELECT `key`, value FROM system_settings').all();
   const settings = Object.fromEntries(rows.map(r => [r.key, r.value]));
   for (const key of SECRET_KEYS) {
     settings[`${key}_set`] = !!settings[key];
@@ -28,7 +28,7 @@ const putSettings = async (req, res) => {
     'privacy_policy_enabled', 'privacy_policy_text',
   ];
   const tx = db.transaction(async (t, updates) => {
-    const upsert = t.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value');
+    const upsert = t.prepare('INSERT INTO system_settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)');
     for (const [key, value] of Object.entries(updates)) {
       if (!allowed.includes(key)) continue;
       // Secret fields: blank submission means "leave unchanged", not "clear it".
@@ -46,7 +46,7 @@ router.put('/system', ...adminOnly, putSettings);
 // GET /privacy-policy - public (Kiosk/Check-in-Formular)
 router.get('/privacy-policy', async (req, res) => {
   const rows = await db.prepare(
-    "SELECT key, value FROM system_settings WHERE key IN ('privacy_policy_enabled', 'privacy_policy_text')"
+    "SELECT `key`, value FROM system_settings WHERE `key` IN ('privacy_policy_enabled', 'privacy_policy_text')"
   ).all();
   const s = Object.fromEntries(rows.map(r => [r.key, r.value]));
   res.json({
@@ -79,7 +79,7 @@ router.post('/sso-allowed-users', ...adminOnly, async (req, res) => {
   const normalizedRole = role === 'admin' ? 'admin' : 'user';
   await db.prepare(`
     INSERT INTO sso_allowed_users (email, role) VALUES (?, ?)
-    ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role
+    ON DUPLICATE KEY UPDATE role = VALUES(role)
   `).run(email.trim().toLowerCase(), normalizedRole);
   res.status(201).json({ email: email.trim().toLowerCase(), role: normalizedRole });
 });

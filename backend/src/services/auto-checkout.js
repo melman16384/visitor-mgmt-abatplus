@@ -11,7 +11,7 @@ function getNextRunMs(timeStr) {
 }
 
 async function runAutoCheckout() {
-  const enabledRow = await db.prepare("SELECT value FROM system_settings WHERE key = 'auto_checkout_enabled'").get();
+  const enabledRow = await db.prepare("SELECT value FROM system_settings WHERE `key` = 'auto_checkout_enabled'").get();
   if (enabledRow?.value !== 'true') return;
 
   const result = await db.prepare(`
@@ -26,7 +26,7 @@ async function runAutoCheckout() {
 }
 
 async function scheduleNext() {
-  const timeRow = await db.prepare("SELECT value FROM system_settings WHERE key = 'auto_checkout_time'").get();
+  const timeRow = await db.prepare("SELECT value FROM system_settings WHERE `key` = 'auto_checkout_time'").get();
   const timeStr = timeRow?.value || '19:00';
   const delay = getNextRunMs(timeStr);
   setTimeout(() => {

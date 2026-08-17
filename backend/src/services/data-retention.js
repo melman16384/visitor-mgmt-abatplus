@@ -1,7 +1,7 @@
 const db = require('../db/database');
 
 async function runRetention() {
-  const row = await db.prepare("SELECT value FROM system_settings WHERE key = 'data_retention_days'").get();
+  const row = await db.prepare("SELECT value FROM system_settings WHERE `key` = 'data_retention_days'").get();
   const days = parseInt(row?.value || '0', 10);
   if (!days || days <= 0) return { visits: 0, visitors: 0, prereg: 0 };
 
@@ -9,7 +9,7 @@ async function runRetention() {
     // Delete old completed visits
     const visits = await t.prepare(`
       DELETE FROM visits
-      WHERE checked_in_at < now() - (? || ' days')::interval
+      WHERE checked_in_at < NOW() - INTERVAL ? DAY
         AND status = 'completed'
     `).run(days);
 
@@ -17,13 +17,13 @@ async function runRetention() {
     const visitors = await t.prepare(`
       DELETE FROM visitors
       WHERE id NOT IN (SELECT DISTINCT visitor_id FROM visits)
-        AND created_at < now() - (? || ' days')::interval
+        AND created_at < NOW() - INTERVAL ? DAY
     `).run(days);
 
     // Delete old non-pending preregistrations
     const prereg = await t.prepare(`
       DELETE FROM preregistrations
-      WHERE created_at < now() - (? || ' days')::interval
+      WHERE created_at < NOW() - INTERVAL ? DAY
         AND status != 'pending'
     `).run(days);
 

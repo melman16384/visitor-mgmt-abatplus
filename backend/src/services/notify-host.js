@@ -7,7 +7,7 @@ async function notifyHostOfArrival(host, visitorName) {
   if (!host || !host.email) return;
   if (!(await graphDirectory.isConfigured())) return;
 
-  const setting = await db.prepare("SELECT value FROM system_settings WHERE key = 'notify_host_on_arrival'").get();
+  const setting = await db.prepare("SELECT value FROM system_settings WHERE `key` = 'notify_host_on_arrival'").get();
   if (setting && setting.value === 'false') return;
 
   try {

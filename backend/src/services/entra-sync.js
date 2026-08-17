@@ -8,14 +8,14 @@ const graphDirectory = require('./graph-directory');
 // AD-Autocomplete gesetzt wird.
 
 async function getSetting(key) {
-  const row = await db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key);
+  const row = await db.prepare('SELECT value FROM system_settings WHERE `key` = ?').get(key);
   return row?.value ?? '';
 }
 
 async function setSetting(key, value) {
   await db.prepare(`
-    INSERT INTO system_settings (key, value) VALUES (?, ?)
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+    INSERT INTO system_settings (\`key\`, value) VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE value = VALUES(value)
   `).run(key, value);
 }
 

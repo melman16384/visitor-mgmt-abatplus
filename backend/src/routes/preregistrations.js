@@ -86,7 +86,7 @@ router.post('/:id/checkin', authenticate, async (req, res) => {
   const visitResult = await db.prepare(`
     INSERT INTO visits (visitor_id, host_id, checked_in_at, notes, status, checked_in_by)
     VALUES (?, ?, ?, ?, 'active', ?)
-  `).run(visitor.id, prereg.host_id || null, checkinTime.toISOString(), prereg.notes || null, req.user.id);
+  `).run(visitor.id, prereg.host_id || null, db.toSqlDateTime(checkinTime), prereg.notes || null, req.user.id);
 
   await db.prepare("UPDATE preregistrations SET status = 'checked_in' WHERE id = ?").run(prereg.id);
 

@@ -45,10 +45,10 @@ router.get('/recent', authenticate, async (req, res) => {
 // GET /chart
 router.get('/chart', authenticate, async (req, res) => {
   const rows = await db.prepare(`
-    SELECT to_char(checked_in_at, 'YYYY-MM-DD') as date, COUNT(*) as count
+    SELECT DATE_FORMAT(checked_in_at, '%Y-%m-%d') as date, COUNT(*) as count
     FROM visits
-    WHERE checked_in_at >= now() - interval '14 days'
-    GROUP BY to_char(checked_in_at, 'YYYY-MM-DD')
+    WHERE checked_in_at >= NOW() - INTERVAL 14 DAY
+    GROUP BY DATE_FORMAT(checked_in_at, '%Y-%m-%d')
     ORDER BY date ASC
   `).all();
 

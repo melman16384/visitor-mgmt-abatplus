@@ -6,7 +6,7 @@ Individuell für **abat+** angepasste Instanz des allgemeinen Besucherverwaltung
 
 | Dokument | Beschreibung |
 |---|---|
-| [Installation](docs/installation.md) | Setup direkt auf Ubuntu/Debian mit Nginx, pm2 & PostgreSQL |
+| [Installation](docs/installation.md) | Setup direkt auf Ubuntu/Debian mit Nginx, pm2 & MariaDB |
 | [Projektdokumentation](docs/dokumentation.md) | Vollständige technische Dokumentation: Architektur, API, DB-Schema, Features, Sicherheit |
 | [Mitarbeiter-Anleitung](docs/mitarbeiter-anleitung.md) | Kurzanleitung für den täglichen Gebrauch (Check-in/-out, Vorregistrierung) |
 
@@ -15,10 +15,10 @@ Individuell für **abat+** angepasste Instanz des allgemeinen Besucherverwaltung
 | Bereich | Technologien |
 |---|---|
 | **Frontend** | React 19, Vite 8, Tailwind CSS 4 |
-| **Backend** | Node.js (≥ 22), Express.js 5, `pg` (PostgreSQL, async Pool), JWT |
+| **Backend** | Node.js (≥ 22), Express.js 5, `mysql2` (MariaDB, async Pool), JWT |
 | **Sicherheit** | helmet, express-rate-limit, bcryptjs (cost 12) |
 | **Services** | MSAL (Microsoft SSO), Microsoft Graph (AD-Suche, Gastgeber-Sync, Mailversand) |
-| **Infra** | Nginx, pm2, Cloudflare, PostgreSQL 16 |
+| **Infra** | Nginx, pm2, Cloudflare, MariaDB 10.11 |
 
 ## Features
 

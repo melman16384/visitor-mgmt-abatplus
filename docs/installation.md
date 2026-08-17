@@ -9,7 +9,7 @@ Diese Anleitung beschreibt die vollständige Erstinstallation auf einem frischen
 ## Inhaltsverzeichnis
 
 1. [Systemvoraussetzungen](#1-systemvoraussetzungen)
-2. [Node.js, Nginx & PostgreSQL installieren](#2-nodejs-nginx--postgresql-installieren)
+2. [Node.js, Nginx & MariaDB installieren](#2-nodejs-nginx--mariadb-installieren)
 3. [Repository klonen](#3-repository-klonen)
 4. [Backend konfigurieren](#4-backend-konfigurieren)
 5. [Microsoft SSO einrichten (Azure)](#5-microsoft-sso-einrichten-azure)
@@ -34,14 +34,14 @@ Diese Anleitung beschreibt die vollständige Erstinstallation auf einem frischen
 | Disk | 2 GB |
 | Node.js | 22.x oder höher |
 | Nginx | aktuell |
-| PostgreSQL | 14 oder höher |
+| MariaDB | 10.6 oder höher |
 | Domain | Bei Cloudflare verwaltet, DNS-Eintrag auf Server-IP zeigend |
 
 Das System benötigt im laufenden Betrieb keine externen Netzwerkverbindungen außer zu Microsoft Entra ID (für den SSO-Login).
 
 ---
 
-## 2. Node.js, Nginx & PostgreSQL installieren
+## 2. Node.js, Nginx & MariaDB installieren
 
 ```bash
 # System aktualisieren
@@ -54,27 +54,39 @@ apt install -y nodejs
 # Nginx installieren
 apt install -y nginx
 
-# PostgreSQL installieren
-apt install -y postgresql
+# MariaDB installieren
+apt install -y mariadb-server mariadb-client
 
 # Versionen prüfen
 node -v    # Sollte v22.x oder höher anzeigen
 npm -v
 nginx -v
-psql --version
+mariadb --version
 
 # pm2 global installieren (Prozessmanager)
 npm install -g pm2
 ```
 
-Datenbank + eigene Rolle anlegen (einmalig, als `postgres`-User):
+Datenbank + eigenen App-Benutzer anlegen (nicht root für die App verwenden):
 
 ```bash
-sudo -u postgres createuser visitormgmt_abatplus --pwprompt
-sudo -u postgres createdb -O visitormgmt_abatplus visitormgmt_abatplus
+mysql -u root <<'SQL'
+CREATE DATABASE visitormgmt_abatplus CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'visitormgmt_abatplus'@'localhost' IDENTIFIED BY 'HIER-SICHERES-PASSWORT-EINTRAGEN';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, REFERENCES
+  ON visitormgmt_abatplus.* TO 'visitormgmt_abatplus'@'localhost';
+FLUSH PRIVILEGES;
+SQL
 ```
 
-Das vergebene Passwort wird gleich in `.env` als `PG_PASSWORD` eingetragen.
+Das vergebene Passwort wird gleich in `.env` als `DB_PASSWORD` eingetragen.
+
+> **Zeitzone auf UTC pinnen:** Die Anwendung erwartet, dass die MariaDB-Session-Zeitzone `+00:00` ist — sonst weichen `NOW()`/`CURRENT_TIMESTAMP` vom UTC-Zeitstempel ab, den das Backend beim Schreiben verwendet (`toSqlDateTime()` in `db/database.js`). In `/etc/mysql/mariadb.conf.d/60-visitor-mgmt-abatplus.cnf` eintragen:
+> ```ini
+> [mysqld]
+> default-time-zone = '+00:00'
+> ```
+> Danach `systemctl restart mariadb`. Läuft bereits eine andere App auf demselben MariaDB-Server mit dieser Einstellung (serverweit, nicht pro Datenbank), ist dieser Schritt schon erledigt — mit `SELECT @@global.time_zone;` prüfen.
 
 ---
 
@@ -119,12 +131,12 @@ PORT=3001
 # openssl rand -hex 64
 JWT_SECRET=<hier-eintragen>
 
-# PostgreSQL-Verbindung (siehe Schritt 2 — dort angelegte Rolle/DB)
-PG_HOST=127.0.0.1
-PG_PORT=5432
-PG_DATABASE=visitormgmt_abatplus
-PG_USER=visitormgmt_abatplus
-PG_PASSWORD=<beim createuser vergebenes Passwort>
+# MariaDB-Verbindung (siehe Schritt 2 — dort angelegte DB/Benutzer)
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=visitormgmt_abatplus
+DB_USER=visitormgmt_abatplus
+DB_PASSWORD=<beim CREATE USER vergebenes Passwort>
 
 # Öffentliche URL der App (ohne abschließenden Slash)
 APP_URL=https://deine-domain.de
@@ -499,7 +511,7 @@ pm2 restart visitor-mgmt
 
 ## 13. Automatisches Backup
 
-Das Projekt bringt ein eigenes Backup-Skript mit: `/opt/visitor-mgmt-abatplus/backup.sh`. Es sichert die PostgreSQL-Datenbank per `pg_dump` (Custom-Format) nach `/opt/visitor-mgmt-abatplus/backups/` und löscht dort Backups, die älter als 30 Tage sind. Die Verbindungsdaten liest es aus `backend/.env` (`PG_*`).
+Das Projekt bringt ein eigenes Backup-Skript mit: `/opt/visitor-mgmt-abatplus/backup.sh`. Es sichert die MariaDB-Datenbank per `mysqldump` (gzip-komprimiertes SQL) und zusätzlich `backend/uploads/` nach `/opt/visitor-mgmt-abatplus/backups/`, löscht dort Backups, die älter als 30 Tage sind. Die Verbindungsdaten liest es aus `backend/.env` (`DB_*`).
 
 ```bash
 #!/bin/bash
@@ -508,21 +520,22 @@ ENV_FILE="/opt/visitor-mgmt-abatplus/backend/.env"
 KEEP_DAYS=30
 DATE=$(date +%Y-%m-%d)
 
-set -a
-source "$ENV_FILE"
-set +a
+get_env() { grep -E "^${1}=" "$ENV_FILE" | tail -1 | cut -d '=' -f2-; }
+DB_HOST=$(get_env DB_HOST); DB_PORT=$(get_env DB_PORT)
+DB_USER=$(get_env DB_USER); DB_PASSWORD=$(get_env DB_PASSWORD); DB_NAME=$(get_env DB_NAME)
 
 mkdir -p "$BACKUP_DIR"
-PGPASSWORD="$PG_PASSWORD" pg_dump -h "${PG_HOST:-127.0.0.1}" -p "${PG_PORT:-5432}" \
-  -U "$PG_USER" -d "$PG_DATABASE" -F c -f "${BACKUP_DIR}/visitors-${DATE}.dump"
-find "$BACKUP_DIR" -name "visitors-*.dump" -mtime +${KEEP_DAYS} -delete
+MYSQL_PWD="$DB_PASSWORD" mysqldump --single-transaction --routines --triggers \
+  -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "$DB_USER" "$DB_NAME" \
+  | gzip > "${BACKUP_DIR}/visitors-${DATE}.sql.gz"
+find "$BACKUP_DIR" -name "visitors-*.sql.gz" -mtime +${KEEP_DAYS} -delete
 ```
 
 Rücksicherung im Notfall:
 
 ```bash
-PGPASSWORD=<PG_PASSWORD aus .env> pg_restore -h 127.0.0.1 -U visitormgmt_abatplus \
-  -d visitormgmt_abatplus --clean -1 /opt/visitor-mgmt-abatplus/backups/visitors-<datum>.dump
+gunzip -c /opt/visitor-mgmt-abatplus/backups/visitors-<datum>.sql.gz \
+  | MYSQL_PWD=<DB_PASSWORD aus .env> mysql -h 127.0.0.1 -u visitormgmt_abatplus visitormgmt_abatplus
 ```
 
 > **Historischer Hinweis:** In einer früheren Fassung verwies das Skript durch einen Copy-Paste-Fehler (vom Schwesterprojekt `visitor-mgmt`) auf falsche, fest kodierte Pfade des anderen Projekts. Bei einer eigenständigen Installation unbedingt prüfen, dass `BACKUP_DIR` und die `.env`-Verbindungsdaten auf die **eigene** Datenbank zeigen, bevor das Skript eingeplant wird — besonders wenn es von einer anderen Installation kopiert wurde.
@@ -594,8 +607,7 @@ rm -rf /etc/ssl/visitorplus
 sed -i '\|/opt/visitor-mgmt-abatplus|d' /etc/cron.d/visitor-mgmt-backups
 
 # Datenbank
-sudo -u postgres dropdb --if-exists visitormgmt_abatplus
-sudo -u postgres dropuser --if-exists visitormgmt_abatplus
+mysql -u root -e "DROP DATABASE IF EXISTS visitormgmt_abatplus; DROP USER IF EXISTS 'visitormgmt_abatplus'@'localhost';"
 
 # Systembenutzer
 userdel svc-visitormgmtplus

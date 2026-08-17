@@ -17,7 +17,7 @@ router.post('/:id/checkout', authenticate, async (req, res) => {
   if (visit.status === 'completed') return res.status(400).json({ error: 'Bereits ausgecheckt' });
 
   await db.prepare(`UPDATE visits SET checked_out_at = ?, status = 'completed' WHERE id = ?`)
-    .run(new Date().toISOString(), req.params.id);
+    .run(db.toSqlDateTime(new Date()), req.params.id);
 
   try { log('CHECKOUT', req.user.name, `${visit.first_name} ${visit.last_name}`); } catch {}
 
@@ -36,7 +36,8 @@ router.post('/:id/reactivate', authenticate, async (req, res) => {
   if (!visit) return res.status(404).json({ error: 'Besuch nicht gefunden' });
   if (visit.status !== 'completed') return res.status(400).json({ error: 'Besuch ist nicht ausgecheckt' });
 
-  const checkedOutDay = (visit.checked_out_at || '').toISOString ? visit.checked_out_at.toISOString().split('T')[0] : (visit.checked_out_at || '').split('T')[0];
+  // mit dateStrings:true liefert mysql2 DATETIME-Spalten als "YYYY-MM-DD HH:MM:SS"
+  const checkedOutDay = (visit.checked_out_at || '').slice(0, 10);
   const today = new Date().toISOString().split('T')[0];
   if (checkedOutDay !== today) {
     return res.status(400).json({ error: 'Nur am selben Tag rückgängig machbar' });
@@ -66,7 +67,7 @@ router.put('/:id/times', authenticate, async (req, res) => {
   if (checked_in_at !== undefined) {
     const parsed = new Date(checked_in_at);
     if (isNaN(parsed.getTime())) return res.status(400).json({ error: 'Ungültige Check-in-Zeit' });
-    newCheckedInAt = parsed.toISOString();
+    newCheckedInAt = db.toSqlDateTime(parsed);
   }
 
   let newCheckedOutAt = visit.checked_out_at;
@@ -76,7 +77,7 @@ router.put('/:id/times', authenticate, async (req, res) => {
     } else {
       const parsed = new Date(checked_out_at);
       if (isNaN(parsed.getTime())) return res.status(400).json({ error: 'Ungültige Check-out-Zeit' });
-      newCheckedOutAt = parsed.toISOString();
+      newCheckedOutAt = db.toSqlDateTime(parsed);
     }
   }
 

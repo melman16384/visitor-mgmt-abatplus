@@ -179,7 +179,7 @@ router.post('/', authenticate, async (req, res) => {
   const visitResult = await db.prepare(`
     INSERT INTO visits (visitor_id, host_id, checked_in_at, notes, status, privacy_accepted, checked_in_by, purpose_id)
     VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
-  `).run(visitor.id, resolvedHostId, checkinTime.toISOString(), notes ? notes.trim() : null,
+  `).run(visitor.id, resolvedHostId, db.toSqlDateTime(checkinTime), notes ? notes.trim() : null,
     !!privacy_accepted, req.user.id, purpose_id || null);
 
   const visit = await db.prepare(`

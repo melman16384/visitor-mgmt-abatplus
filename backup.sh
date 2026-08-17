@@ -5,19 +5,27 @@ UPLOADS_DIR="/opt/visitor-mgmt-abatplus/backend/uploads"
 KEEP_DAYS=30
 DATE=$(date +%Y-%m-%d)
 
-set -a
-source "$ENV_FILE"
-set +a
+get_env() { grep -E "^${1}=" "$ENV_FILE" | tail -1 | cut -d '=' -f2-; }
+DB_HOST=$(get_env DB_HOST)
+DB_PORT=$(get_env DB_PORT)
+DB_USER=$(get_env DB_USER)
+DB_PASSWORD=$(get_env DB_PASSWORD)
+DB_NAME=$(get_env DB_NAME)
 
 mkdir -p "$BACKUP_DIR"
 
-PGPASSWORD="$PG_PASSWORD" pg_dump -h "${PG_HOST:-127.0.0.1}" -p "${PG_PORT:-5432}" \
-  -U "$PG_USER" -d "$PG_DATABASE" -F c -f "${BACKUP_DIR}/visitors-${DATE}.dump"
+OUT_FILE="${BACKUP_DIR}/visitors-${DATE}.sql.gz"
+
+MYSQL_PWD="$DB_PASSWORD" mysqldump \
+  --single-transaction --routines --triggers \
+  -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "$DB_USER" "$DB_NAME" \
+  | gzip > "$OUT_FILE"
 
 if [ $? -eq 0 ]; then
-  echo "[backup] visitors-${DATE}.dump erstellt"
+  echo "[backup] visitors-${DATE}.sql.gz erstellt"
 else
   echo "[backup] FEHLER beim Backup" >&2
+  rm -f "$OUT_FILE"
   exit 1
 fi
 
@@ -31,6 +39,6 @@ if [ -d "$UPLOADS_DIR" ]; then
   fi
 fi
 
-find "$BACKUP_DIR" -name "visitors-*.dump" -mtime +${KEEP_DAYS} -delete
+find "$BACKUP_DIR" -name "visitors-*.sql.gz" -mtime +${KEEP_DAYS} -delete
 find "$BACKUP_DIR" -name "uploads-*.tar.gz" -mtime +${KEEP_DAYS} -delete
 echo "[backup] Alte Backups (>${KEEP_DAYS} Tage) bereinigt"

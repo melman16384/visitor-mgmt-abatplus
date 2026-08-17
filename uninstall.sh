@@ -94,9 +94,8 @@ echo
 if confirm "Letztes DB-Backup vor dem Löschen erstellen ($PROJECT_DIR/backups)?"; then
   run "$PROJECT_DIR/backup.sh || echo 'Backup fehlgeschlagen — Skript prüfen, bevor weitergemacht wird!'"
 fi
-if confirm "PostgreSQL-Datenbank '$DB_NAME' und Rolle '$DB_ROLE' UNWIDERRUFLICH löschen?"; then
-  run "sudo -u postgres dropdb --if-exists '$DB_NAME'"
-  run "sudo -u postgres dropuser --if-exists '$DB_ROLE'"
+if confirm "MariaDB-Datenbank '$DB_NAME' und Benutzer '$DB_ROLE' UNWIDERRUFLICH löschen?"; then
+  run "mysql -u root -e \"DROP DATABASE IF EXISTS \\\`$DB_NAME\\\`; DROP USER IF EXISTS '$DB_ROLE'@'localhost';\""
 fi
 echo
 

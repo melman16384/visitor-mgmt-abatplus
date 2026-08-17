@@ -6,7 +6,7 @@ const db = require('../db/database');
 // DB-backed (system_settings), falling back to .env so existing installs
 // that only set AZURE_* env vars keep working without a forced migration.
 async function getSetting(key, envFallback) {
-  const row = await db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key);
+  const row = await db.prepare('SELECT value FROM system_settings WHERE `key` = ?').get(key);
   const value = row?.value?.trim();
   return value || envFallback || '';
 }

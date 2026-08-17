@@ -125,8 +125,8 @@ Browser / Handy (Mitarbeiter)
                               ├── Routen: auth, visitors, visits,
                               │   hosts, preregistrations, users,
                               │   settings, dashboard
-                              └── PostgreSQL-Datenbank
-                                  (pg Pool, asynchron)
+                              └── MariaDB-Datenbank
+                                  (mysql2 Pool, asynchron)
 ```
 
 **Technologie-Stack:**
@@ -137,13 +137,13 @@ Browser / Handy (Mitarbeiter)
 | Build-Tool | Vite | 8 |
 | CSS-Framework | Tailwind CSS | 4 |
 | Backend | Express.js | 5 |
-| Datenbank | PostgreSQL via `pg` | 16 |
+| Datenbank | MariaDB via `mysql2` | 10.11 |
 | Authentifizierung | JWT (8h) + MSAL (Microsoft SSO) | — |
 | Prozessmanager | pm2 | — |
 | Webserver | Nginx | — |
 | CDN/Proxy | Cloudflare | — |
 
-**Warum PostgreSQL?** Ursprünglich lief die App auf SQLite (einzelne Instanz, kein separater Datenbankdienst nötig, für die erwartete Last < 500 Besucher/Tag ausreichend). Migriert auf PostgreSQL (lokale Instanz auf demselben Server) für bessere Nebenläufigkeit, Tooling und Zukunftssicherheit. `backend/src/db/database.js` kapselt den Zugriff über eine dünne Adapter-Schicht (`prepare(sql).get/all/run`, `exec`, `transaction`) mit derselben Aufrufsyntax wie vorher — darunter läuft es aber vollständig asynchron über einen `pg`-Connection-Pool.
+**Warum MariaDB?** Ursprünglich lief die App auf SQLite (einzelne Instanz, kein separater Datenbankdienst nötig), dann kurzzeitig auf PostgreSQL. Seit August 2026 auf MariaDB (lokale Instanz auf demselben Server) umgestellt — vereinheitlicht die Infrastruktur mit dem Schwesterprojekt `visitor-mgmt`, das bereits auf MariaDB läuft (ein Datenbank-Server, ein Backup-/Tooling-Ansatz für beide Apps statt zwei verschiedener DB-Engines auf demselben Host). `backend/src/db/database.js` kapselt den Zugriff über eine dünne Adapter-Schicht (`prepare(sql).get/all/run`, `exec`, `transaction`) mit derselben Aufrufsyntax wie zuvor — darunter läuft es aber vollständig asynchron über einen `mysql2/promise`-Connection-Pool.
 
 ---
 
@@ -179,7 +179,7 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── entra-sync.js        # Zieht alle Verzeichnis-Benutzer als Gastgeber (User.Read.All)
 │   │   │   └── entra-sync-schedule.js # Einmal beim Start, danach alle 24h
 │   │   └── index.js                 # App-Einstieg, Middleware, Route-Mounting, Graceful Shutdown
-│   ├── .env                         # Secrets (inkl. PG_* Verbindungsdaten) — nicht in Git, nicht committen!
+│   ├── .env                         # Secrets (inkl. DB_* Verbindungsdaten) — nicht in Git, nicht committen!
 │   ├── .env.example                 # Vorlage ohne echte Werte
 │   └── package.json
 ├── frontend/
@@ -214,75 +214,77 @@ Browser / Handy (Mitarbeiter)
 
 ## 5. Datenbank
 
-**Engine:** PostgreSQL 16, lokale Instanz auf demselben Server (Rolle/DB `visitormgmt_abatplus`, Verbindungsdaten in `backend/.env` als `PG_*`).  
-**Zugriff:** `backend/src/db/database.js` — dünner Adapter über einen `pg`-Connection-Pool mit derselben Aufrufsyntax wie das frühere SQLite-Setup (`prepare(sql).get/all/run`, `exec`, `transaction`), aber vollständig asynchron.  
-**Initialisierung:** Beim ersten Start von `index.js` wird das Schema automatisch angelegt. Neue Spalten werden per `ALTER TABLE … ADD COLUMN IF NOT EXISTS` idempotent hinzugefügt — kein manuelles Migrations-Skript nötig.
-**Backup:** `backup.sh` (`pg_dump -F c`) → `/opt/visitor-mgmt-abatplus/backups/*.dump`, täglich per Cron (siehe `docs/installation.md`).
+**Engine:** MariaDB 10.11, lokale Instanz auf demselben Server (DB/Benutzer `visitormgmt_abatplus`, Verbindungsdaten in `backend/.env` als `DB_*`). Server-Zeitzone auf UTC gepinnt (`default-time-zone = '+00:00'`, serverweit).  
+**Zugriff:** `backend/src/db/database.js` — dünner Adapter über einen `mysql2/promise`-Connection-Pool mit derselben Aufrufsyntax wie das frühere SQLite-/Postgres-Setup (`prepare(sql).get/all/run`, `exec`, `transaction`), aber vollständig asynchron. `dateStrings: true` + `timezone: 'Z'` sorgen dafür, dass `DATETIME`-Spalten als UTC-Strings ankommen statt implizit in Server-Lokalzeit konvertiert zu werden.  
+**Initialisierung:** Beim ersten Start von `index.js` wird das Schema automatisch angelegt. Neue Indizes werden per `CREATE INDEX IF NOT EXISTS` idempotent hinzugefügt — kein manuelles Migrations-Skript nötig.
+**Backup:** `backup.sh` (`mysqldump --single-transaction`, gzip-komprimiert) → `/opt/visitor-mgmt-abatplus/backups/*.sql.gz`, täglich per Cron (siehe `docs/installation.md`).
+
+> **JS-Date → DATETIME:** MariaDB lehnt `new Date().toISOString()` (ISO-8601 mit `T`/`Z`/Millisekunden) in `DATETIME`-Spalten ab. Jede Stelle, die ein JS-`Date` schreibt oder gegen eine `DATETIME`-Spalte vergleicht, muss durch `db.toSqlDateTime(date)` (`backend/src/db/database.js`) — wandelt in `YYYY-MM-DD HH:MM:SS` um.
 
 ### Tabellen
 
 #### `users` — Systembenutzer (Mitarbeiter mit Login)
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | SERIAL PK | Auto-Increment |
-| name | TEXT NOT NULL | Anzeigename |
-| email | TEXT UNIQUE | Login-E-Mail (Kleinbuchstaben) |
-| password_hash | TEXT | bcrypt-Hash; leer bei reinen SSO-Nutzern |
-| role | TEXT | `admin` oder `user` |
-| active | BOOLEAN | true = aktiv, false = deaktiviert |
-| created_at | TIMESTAMPTZ | |
+| id | INT PK AUTO_INCREMENT | Auto-Increment |
+| name | VARCHAR/TEXT NOT NULL | Anzeigename |
+| email | VARCHAR/TEXT UNIQUE | Login-E-Mail (Kleinbuchstaben) |
+| password_hash | VARCHAR/TEXT | bcrypt-Hash; leer bei reinen SSO-Nutzern |
+| role | VARCHAR/TEXT | `admin` oder `user` |
+| active | BOOLEAN (TINYINT(1)) | true = aktiv, false = deaktiviert |
+| created_at | DATETIME | |
 
 #### `visitors` — Besucherstammdaten
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | SERIAL PK | |
-| first_name | TEXT NOT NULL | |
-| last_name | TEXT NOT NULL | |
-| company | TEXT | Unternehmen (optional) |
-| created_at | TIMESTAMPTZ | Wann erstmals im System angelegt |
+| id | INT PK AUTO_INCREMENT | |
+| first_name | VARCHAR/TEXT NOT NULL | |
+| last_name | VARCHAR/TEXT NOT NULL | |
+| company | VARCHAR/TEXT | Unternehmen (optional) |
+| created_at | DATETIME | Wann erstmals im System angelegt |
 
 #### `visits` — Einzelne Besuche (ein Besucher kann mehrfach kommen)
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | SERIAL PK | |
+| id | INT PK AUTO_INCREMENT | |
 | visitor_id | INTEGER FK | → visitors.id |
 | host_id | INTEGER FK | → hosts.id (Ansprechpartner) |
-| checked_in_at | TIMESTAMPTZ | Zeitstempel des Check-ins |
-| checked_out_at | TIMESTAMPTZ | Zeitstempel des Check-outs; NULL = noch anwesend |
-| status | TEXT | `active` (anwesend) oder `completed` (ausgecheckt) |
-| privacy_accepted | BOOLEAN | true = Datenschutz-Checkbox wurde gesetzt |
+| checked_in_at | DATETIME | Zeitstempel des Check-ins |
+| checked_out_at | DATETIME | Zeitstempel des Check-outs; NULL = noch anwesend |
+| status | VARCHAR/TEXT | `active` (anwesend) oder `completed` (ausgecheckt) |
+| privacy_accepted | BOOLEAN (TINYINT(1)) | true = Datenschutz-Checkbox wurde gesetzt |
 | checked_in_by | INTEGER FK | → users.id — wer hat eingecheckt |
 | purpose_id | INTEGER FK | → visit_purposes.id, optional |
-| notes | TEXT | Freitext-Notiz |
+| notes | VARCHAR/TEXT | Freitext-Notiz |
 
 > **Indizes:** `visitor_id`, `host_id`, `status`, `checked_in_at`, `checked_out_at` sind indiziert — trägt die Suche/Filterung in der Besucherliste bei wachsender Historie.
 
 #### `hosts` — Gastgeber (Ansprechpartner für Besucher)
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | SERIAL PK | |
-| name | TEXT NOT NULL | |
-| email | TEXT | Firmenemail |
-| active | BOOLEAN | true = aktiv, erscheint in der Autocomplete/Zuordnung |
-| ad_object_id | TEXT | Objekt-ID aus dem Active Directory, falls über SSO-Login oder AD-Autocomplete angelegt |
-| created_at | TIMESTAMPTZ | |
+| id | INT PK AUTO_INCREMENT | |
+| name | VARCHAR/TEXT NOT NULL | |
+| email | VARCHAR/TEXT | Firmenemail |
+| active | BOOLEAN (TINYINT(1)) | true = aktiv, erscheint in der Autocomplete/Zuordnung |
+| ad_object_id | VARCHAR/TEXT | Objekt-ID aus dem Active Directory, falls über SSO-Login oder AD-Autocomplete angelegt |
+| created_at | DATETIME | |
 
 > Gastgeber werden automatisch angelegt — beim Microsoft-Login des Mitarbeiters selbst, oder wenn beim Check-in/bei der Vorregistrierung ein Gastgeber über die AD-Autocomplete ausgewählt wird (`findOrCreateHostByEmail()` in `services/hosts-helper.js`). Es gibt keine eigene Gastgeber-Verwaltungsseite mehr; ein Admin-Gegencheck gegen das Verzeichnis ist unter Einstellungen → Gastgeber möglich (siehe Kapitel 7).
 
 #### `preregistrations` — Vorangemeldete Besucher
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | SERIAL PK | |
-| visitor_first_name | TEXT NOT NULL | |
-| visitor_last_name | TEXT NOT NULL | |
-| visitor_company | TEXT | |
+| id | INT PK AUTO_INCREMENT | |
+| visitor_first_name | VARCHAR/TEXT NOT NULL | |
+| visitor_last_name | VARCHAR/TEXT NOT NULL | |
+| visitor_company | VARCHAR/TEXT | |
 | host_id | INTEGER FK | → hosts.id |
 | expected_date | DATE | optional |
 | expected_time | TIME | optional |
-| notes | TEXT | Pflichtfeld bei der Erstellung |
-| status | TEXT | `pending` → `checked_in` oder `cancelled` |
+| notes | VARCHAR/TEXT | Pflichtfeld bei der Erstellung |
+| status | VARCHAR/TEXT | `pending` → `checked_in` oder `cancelled` |
 | created_by | INTEGER FK | → users.id — wer hat vorregistriert |
-| created_at | TIMESTAMPTZ | |
+| created_at | DATETIME | |
 
 > **Migration (Juli 2026, SQLite-Ära):** `expected_date` war in der ursprünglichen Tabellendefinition fälschlich `NOT NULL`, obwohl das Datum laut Formular/Doku optional ist. Unter SQLite (kein `ALTER COLUMN`) wurde das per Tabellen-Rebuild gelöst; seit der Postgres-Migration (August 2026) ist die Spalte direkt per `ALTER TABLE … DROP NOT NULL` optional.
 
@@ -303,19 +305,19 @@ Browser / Handy (Mitarbeiter)
 #### `visit_purposes` — Besuchszwecke
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| id | SERIAL PK | |
-| name | TEXT UNIQUE NOT NULL | z.B. „Besprechung", „Lieferung" |
+| id | INT PK AUTO_INCREMENT | |
+| name | VARCHAR/TEXT UNIQUE NOT NULL | z.B. „Besprechung", „Lieferung" |
 | sort_order | INTEGER | Reihenfolge in Dropdown/Liste |
-| active | BOOLEAN | false = Soft-Delete, bleibt in historischen Besuchen referenzierbar |
+| active | BOOLEAN (TINYINT(1)) | false = Soft-Delete, bleibt in historischen Besuchen referenzierbar |
 
 > Bei Erstinstallation werden fünf Standardzwecke automatisch angelegt: Besprechung, Lieferung, Interview, Wartung, Sonstiges.
 
 #### `sso_allowed_users` — Zugriffsliste für Microsoft-SSO-Login
 | Spalte | Typ | Beschreibung |
 |---|---|---|
-| email | TEXT PK | Kleingeschrieben |
-| role | TEXT | `admin` oder `user` — wird bei jedem SSO-Login auf den Benutzer synchronisiert |
-| created_at | TIMESTAMPTZ | |
+| email | VARCHAR/TEXT PK | Kleingeschrieben |
+| role | VARCHAR/TEXT | `admin` oder `user` — wird bei jedem SSO-Login auf den Benutzer synchronisiert |
+| created_at | DATETIME | |
 
 > Ersetzt die frühere domainweite Allowlist (`sso_allowed_domains`/`SSO_ALLOWED_DOMAINS`) — siehe Kapitel 7. Nur hier gelistete E-Mail-Adressen dürfen sich per SSO anmelden, unabhängig davon, ob bereits ein lokaler Account existiert.
 
@@ -1091,11 +1093,11 @@ pm2 stop visitor-mgmt             # Anhalten
 |---|---|---|
 | `PORT` | Ja | Backend-Port (Standard: 3001) |
 | `JWT_SECRET` | Ja | Mindestens 64 zufällige Zeichen — `openssl rand -hex 64` |
-| `PG_HOST` | Ja | PostgreSQL-Host (i.d.R. `127.0.0.1`) |
-| `PG_PORT` | Ja | PostgreSQL-Port (Standard: `5432`) |
-| `PG_DATABASE` | Ja | Datenbankname (`visitormgmt_abatplus`) |
-| `PG_USER` | Ja | DB-Rolle (`visitormgmt_abatplus`) |
-| `PG_PASSWORD` | Ja | Passwort der DB-Rolle |
+| `DB_HOST` | Ja | MariaDB-Host (i.d.R. `127.0.0.1`) |
+| `DB_PORT` | Ja | MariaDB-Port (Standard: `3306`) |
+| `DB_NAME` | Ja | Datenbankname (`visitormgmt_abatplus`) |
+| `DB_USER` | Ja | DB-Benutzer (`visitormgmt_abatplus`) |
+| `DB_PASSWORD` | Ja | Passwort des DB-Benutzers |
 | `APP_URL` | Ja | Öffentliche URL der App inkl. Schema, ohne Slash |
 | `AZURE_CLIENT_ID` | Fallback | Client-ID der Azure App Registration — Fallback, falls in Einstellungen → Microsoft SSO nichts hinterlegt ist |
 | `AZURE_TENANT_ID` | Fallback | Tenant-ID des Entra ID-Verzeichnisses — Fallback (s.o.) |
@@ -1135,31 +1137,31 @@ cd /opt/visitor-mgmt-abatplus/frontend && npm run build
 pm2 restart visitor-mgmt
 
 # ── Datenbank ─────────────────────────────────────────────────
-# .env laden (PG_* Variablen) und psql-Shell öffnen
+# .env laden (DB_* Variablen) und mysql-Shell öffnen
 set -a; source /opt/visitor-mgmt-abatplus/backend/.env; set +a
-PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE"
+MYSQL_PWD="$DB_PASSWORD" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME"
 
 # Tabellen anzeigen
-PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" -c '\dt'
+MYSQL_PWD="$DB_PASSWORD" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -e 'SHOW TABLES;'
 
 # Alle Benutzer anzeigen
-PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
-  -c "SELECT id, name, email, role, active FROM users;"
+MYSQL_PWD="$DB_PASSWORD" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" \
+  -e "SELECT id, name, email, role, active FROM users;"
 
 # Passwort zurücksetzen
 cd /opt/visitor-mgmt-abatplus/backend
 HASH=$(node -e "const b=require('bcryptjs'); b.hash('NeuesPasswort123!',12).then(h=>process.stdout.write(h))")
-PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
-  -c "UPDATE users SET password_hash='$HASH' WHERE email='admin@example.com';"
+MYSQL_PWD="$DB_PASSWORD" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" \
+  -e "UPDATE users SET password_hash='$HASH' WHERE email='admin@example.com';"
 
 # Benutzer auf admin hochstufen
-PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
-  -c "UPDATE users SET role='admin' WHERE email='max.mustermann@abat.de';"
+MYSQL_PWD="$DB_PASSWORD" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" \
+  -e "UPDATE users SET role='admin' WHERE email='max.mustermann@abat.de';"
 
 # Datenbank-Backup (siehe auch backup.sh, läuft täglich per Cron)
 mkdir -p /root/backups
-PGPASSWORD="$PG_PASSWORD" pg_dump -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" \
-  -F c -f "/root/backups/visitors-$(date +%Y%m%d-%H%M).dump"
+MYSQL_PWD="$DB_PASSWORD" mysqldump --single-transaction -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" \
+  | gzip > "/root/backups/visitors-$(date +%Y%m%d-%H%M).sql.gz"
 
 # ── API-Tests ─────────────────────────────────────────────────
 curl https://visitorplus.luwilab.work/api/health
@@ -1229,6 +1231,10 @@ Aus SQLite (better-sqlite3, synchron, Einzeldatei) wurde auf PostgreSQL 16 (loka
 ### Offener Punkt — noch nicht abschließend geklärt
 
 In der Live-Datenbank existieren zwei Accounts mit generisch wirkenden Namen: `admin@example.com` und `user@example.com`. Es ist nicht abschließend geklärt, ob es sich um legitime aktive Accounts oder um übrig gebliebene Test-Accounts handelt. Dies wurde dem Betreiber zur Prüfung gemeldet (umbenennen, Passwortstärke verifizieren oder deaktivieren) — es wurde noch **keine automatische Aktion** vorgenommen. Vor einem produktiven Go-Live sollten diese Accounts geprüft werden (siehe auch [installation.md, Kapitel 11](./installation.md#11-erster-start--test)).
+
+### Datenbank von PostgreSQL auf MariaDB migriert (17. August 2026)
+
+Nur wenige Stunden nach der SQLite→PostgreSQL-Migration (siehe unten) noch einmal umgestellt, diesmal auf MariaDB 10.11 — vereinheitlicht die Infrastruktur mit dem Schwesterprojekt `visitor-mgmt`, das bereits auf MariaDB läuft, statt zwei verschiedene DB-Engines auf demselben Server zu pflegen. `backend/src/db/database.js` komplett neu geschrieben (`mysql2/promise` statt `pg`, `dateStrings: true`/`timezone: 'Z'`, `toSqlDateTime()`-Helper für JS-Date→`DATETIME`-Schreibvorgänge). Schema-Typen angepasst (`SERIAL`→`INT AUTO_INCREMENT`, `TIMESTAMPTZ`→`DATETIME`, `BOOLEAN`→`TINYINT(1)`), `ON CONFLICT … DO UPDATE`→`ON DUPLICATE KEY UPDATE`, `RETURNING id`→`insertId`, Postgres-spezifische Funktionen (`to_char`, `::interval`-Cast) auf MariaDB-Äquivalente (`DATE_FORMAT`, `INTERVAL ? DAY`) umgestellt. `key` als Spaltenname in `system_settings` musste überall mit Backticks versehen werden (reserviertes Wort in MySQL/MariaDB, in Postgres unproblematisch). Server-Zeitzone serverweit bereits auf UTC gepinnt (galt schon für `visitor-mgmt`). Alle Änderungen live gegen eine frisch angelegte MariaDB-Instanz smoke-getestet (Transaktions-Commit/Rollback, Check-in-Flow, Dashboard-Queries, Settings-Upsert, SSO-Zugriffsliste) — siehe [Kapitel 5, Datenbank](#5-datenbank) für den aktuellen Stand. `backup.sh` nutzt seitdem `mysqldump` statt `pg_dump`. **Die bestehenden PostgreSQL-Daten wurden dabei nicht automatisch übernommen** — die neue MariaDB-Datenbank startet leer (nur Default-Settings, Besuchszwecke, initialer Admin); ein manueller Datenexport aus dem alten PostgreSQL-Bestand war zum Zeitpunkt der Umstellung nicht Teil des Auftrags.
 
 ### Feature- und Härtungs-Batch: Entra-Sync, editierbare Zeiten, Produktiv-Härtung (17. August 2026)
 
@@ -1344,18 +1350,27 @@ systemctl reload nginx
 NODE_OPTIONS=--use-system-ca npm install
 ```
 
-### Backend startet nicht — `ECONNREFUSED` auf PostgreSQL-Port
+### Backend startet nicht — `ECONNREFUSED` auf MariaDB-Port
 
-→ PostgreSQL läuft nicht oder `PG_*`-Variablen in `.env` sind falsch:
+→ MariaDB läuft nicht oder `DB_*`-Variablen in `.env` sind falsch:
 ```bash
-systemctl status postgresql
+systemctl status mariadb
 set -a; source /opt/visitor-mgmt-abatplus/backend/.env; set +a
-PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" -c '\conninfo'
+MYSQL_PWD="$DB_PASSWORD" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -e '\s'
 ```
 
 ### Datenbank-Integrität prüfen
 ```bash
 set -a; source /opt/visitor-mgmt-abatplus/backend/.env; set +a
-PGPASSWORD="$PG_PASSWORD" psql -h "$PG_HOST" -U "$PG_USER" -d "$PG_DATABASE" -c "SELECT 1;"
+MYSQL_PWD="$DB_PASSWORD" mysql -h "$DB_HOST" -u "$DB_USER" "$DB_NAME" -e "SELECT 1;"
 # Verbindungsfehler statt Ergebnis = DB nicht erreichbar/beschädigt
+```
+
+### MariaDB-Session-Zeitzone falsch — Zeiten weichen um Stunden ab
+
+→ Server-Zeitzone nicht auf UTC gepinnt (siehe Kapitel 2 der Installationsanleitung):
+```bash
+mysql -u root -e "SELECT @@global.time_zone;"
+# Sollte +00:00 sein — falls nicht: /etc/mysql/mariadb.conf.d/60-visitor-mgmt-abatplus.cnf
+# mit default-time-zone = '+00:00' anlegen, dann: systemctl restart mariadb
 ```
