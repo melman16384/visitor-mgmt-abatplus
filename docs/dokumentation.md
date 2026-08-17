@@ -1,6 +1,6 @@
 # Besucherverwaltung abat+ — Projektdokumentation
 
-> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 7. Juli 2026 (Merge Besucher/Vorregistrierung, AD-Gastgeber, Mail-Benachrichtigung)  
+> Erstellt: 15. Juni 2026 | Zuletzt aktualisiert: 17. August 2026 (Gastgeber-Sync aus Entra ID, Besuchszwecke, editierbare Check-in/-out-Zeit, SSO-Zugriffsliste statt Domain-Allowlist, Datenschutztext, Produktiv-Härtung)  
 > Kunde: **abat AG**  
 > URL: https://visitorplus.luwilab.work  
 > Repository: https://github.com/melman16384/visitor-mgmt-abatplus  
@@ -51,15 +51,19 @@ Schlanke, mitarbeitergesteuerte Besucherverwaltung, entwickelt ausschließlich f
 |---|---|
 | Check-in | Mitarbeiter checkt Besucher über ein einfaches Formular ein; Check-in-Datum/-Uhrzeit sind vorbelegt (jetzt), aber änderbar |
 | Check-out | Manuell per Klick mit Bestätigungsdialog, oder automatisch zur konfigurierten Uhrzeit |
+| Zeiten nachträglich korrigierbar | Check-in- und (falls bereits ausgecheckt) Check-out-Zeit lassen sich über ein Stift-Symbol in der Besucherliste nachträglich anpassen (`PUT /visits/:id/times`) |
 | Checkout rückgängig | Ein am selben Tag ausgecheckter Besuch kann per Klick reaktiviert werden |
 | „Erfasst durch" | Speichert Name + Zeitstempel des einchecke­nden Mitarbeiters |
 | Gemeinsame Besucherliste | Vorregistriert, Anwesend, Ausgecheckt und Abgesagt sind Tabs **einer** Liste (`/visitors`) — keine getrennte Datenpflege |
 | Vorregistrierungen | Besucher vorab eintragen (in der Besucherliste integriert); bei Ankunft per Klick einchecken, Uhrzeit dabei leicht korrigierbar |
+| Besuchszwecke | Konfigurierbare, sortierbare Liste (Einstellungen → Besuchszwecke); im Check-in-Formular auswählbar, in der Besucherliste sichtbar |
 | Gastgeber aus Active Directory | Autocomplete ab 3 Zeichen gegen das Firmen-AD (separates App-only-Verzeichniskonto); lokale Gastgeber-Verwaltungsseite entfällt |
+| Gastgeber-Sync (Entra ID) | Täglicher automatischer Abgleich aller Verzeichnis-Benutzer als Gastgeber (dieselbe App-Registrierung wie SSO), inkl. manuellem Sync-Button und Status-Anzeige (Einstellungen → Gastgeber-Sync) |
 | Gastgeber-Benachrichtigung | Optionale Mail an den Gastgeber bei Ankunft des Besuchers (Microsoft Graph `sendMail`) |
 | Admin-AD-Gegencheck | Einstellungen → Gastgeber: prüft lokale Gastgeber-Einträge gegen das Verzeichnis |
-| Microsoft SSO | Login mit Firmenkonto; User + Gastgeber-Eintrag automatisch angelegt |
-| Datenschutzhinweis | Checkbox „Besucher wurde auf die Datenschutzerklärung hingewiesen", verlinkt auf https://www.abat.de/datenschutz — statt Unterschriftspad |
+| Microsoft SSO | Login mit Firmenkonto; nur Adressen auf der Zugriffsliste (Einstellungen → Microsoft SSO) dürfen sich anmelden, Rolle wird bei jedem Login synchronisiert |
+| Datenschutzhinweis | Checkbox „Besucher wurde auf die Datenschutzerklärung hingewiesen"; Text konfigurierbar (Einstellungen → Datenschutz), Default verlinkt auf https://www.abat.de/datenschutz — statt Unterschriftspad |
+| Datenschutz-Bereinigung | Automatische tägliche Löschung nach Aufbewahrungsfrist, zusätzlich manuell auslösbar (Einstellungen → Datenschutz → „Jetzt bereinigen") |
 | Notizen | Optionales Feld beim Check-in/bei der Vorregistrierung, sichtbar in der Besucherliste |
 | Tages-Filter | Besucherliste zeigt standardmäßig den heutigen Tag; per Datumsfeld auf einen anderen Tag umschaltbar |
 | Mobil-optimiert | Vollständig responsiv — Handy + Desktop gleichwertig |
@@ -70,7 +74,9 @@ Schlanke, mitarbeitergesteuerte Besucherverwaltung, entwickelt ausschließlich f
 
 Folgende Features wurden gegenüber der Ausgangsversion bewusst entfernt, da sie für den abat+-Betrieb nicht benötigt werden:
 
-Kiosk-Modus · Host-Portal · QR-Scanner · Badge-/Etikettendrucker · E-Mail-Benachrichtigungen · Mehrsprachigkeit (EN/LT/RU) · Zwei-Faktor-Authentifizierung · GDPR-Cleanup-Automatismus · Evakuierungsliste · Berichte/Exports · Audit-Log UI · abat-ID · Dokumenten-Upload · Unterschriftspad · Standortbasierte Zugriffskontrolle · Gruppenregistrierungen
+Kiosk-Modus · Host-Portal · QR-Scanner · Badge-/Etikettendrucker · E-Mail-Benachrichtigungen · Mehrsprachigkeit (EN/LT/RU) · Zwei-Faktor-Authentifizierung · Evakuierungsliste · Berichte/Exports · Audit-Log UI · abat-ID · Dokumenten-Upload · Unterschriftspad · Standortbasierte Zugriffskontrolle · Gruppenregistrierungen
+
+> Die zugehörigen Backend-Routen (`documents.js`, `locations.js`, `reports.js`) liegen zwar noch als Altlast aus einem früheren Fork im Repository, sind aber in `index.js` nicht eingebunden und über die API nicht erreichbar — reiner Aufräumkandidat, kein aktives Feature.
 
 ---
 
@@ -159,7 +165,9 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── hosts.js             # Gastgeber-CRUD, AD-Suche (/search-ad), Admin-Gegencheck (/:id/ad-check)
 │   │   │   ├── preregistrations.js  # Vorregistrierungen + POST /:id/checkin
 │   │   │   ├── users.js             # Benutzerverwaltung (admin only)
-│   │   │   ├── settings.js          # Auto-Checkout-, Retention- und Benachrichtigungs-Einstellungen
+│   │   │   ├── settings.js          # Auto-Checkout-, Retention-, Datenschutz- und Benachrichtigungs-Einstellungen, SSO-Zugriffsliste, GDPR-Bereinigung
+│   │   │   ├── visit-purposes.js    # Besuchszwecke-CRUD + Sortierung
+│   │   │   ├── entra-sync.js        # Konfiguration + manueller Anstoß des Gastgeber-Sync (admin only)
 │   │   │   └── dashboard.js         # Statistiken + letzte Aktivitäten
 │   │   ├── services/
 │   │   │   ├── auto-checkout.js     # Täglicher Auto-Checkout per setTimeout
@@ -167,8 +175,10 @@ Browser / Handy (Mitarbeiter)
 │   │   │   ├── audit-log.js         # Dateibasiertes Audit-Log (optional)
 │   │   │   ├── graph-directory.js   # App-only Microsoft-Graph-Client (AD-Suche, Gegencheck, Mailversand)
 │   │   │   ├── hosts-helper.js      # findOrCreateHostByEmail() — gemeinsame Gastgeber-Anlage-Logik
-│   │   │   └── notify-host.js       # Best-effort Gastgeber-Mail bei Ankunft
-│   │   └── index.js                 # App-Einstieg, Middleware, Route-Mounting
+│   │   │   ├── notify-host.js       # Best-effort Gastgeber-Mail bei Ankunft
+│   │   │   ├── entra-sync.js        # Zieht alle Verzeichnis-Benutzer als Gastgeber (User.Read.All)
+│   │   │   └── entra-sync-schedule.js # Einmal beim Start, danach alle 24h
+│   │   └── index.js                 # App-Einstieg, Middleware, Route-Mounting, Graceful Shutdown
 │   ├── .env                         # Secrets (inkl. PG_* Verbindungsdaten) — nicht in Git, nicht committen!
 │   ├── .env.example                 # Vorlage ohne echte Werte
 │   └── package.json
@@ -242,7 +252,10 @@ Browser / Handy (Mitarbeiter)
 | status | TEXT | `active` (anwesend) oder `completed` (ausgecheckt) |
 | privacy_accepted | BOOLEAN | true = Datenschutz-Checkbox wurde gesetzt |
 | checked_in_by | INTEGER FK | → users.id — wer hat eingecheckt |
+| purpose_id | INTEGER FK | → visit_purposes.id, optional |
 | notes | TEXT | Freitext-Notiz |
+
+> **Indizes:** `visitor_id`, `host_id`, `status`, `checked_in_at`, `checked_out_at` sind indiziert — trägt die Suche/Filterung in der Besucherliste bei wachsender Historie.
 
 #### `hosts` — Gastgeber (Ansprechpartner für Besucher)
 | Spalte | Typ | Beschreibung |
@@ -276,10 +289,35 @@ Browser / Handy (Mitarbeiter)
 #### `system_settings` — Schlüssel-Wert-Konfiguration
 | Key | Default | Beschreibung |
 |---|---|---|
-| `auto_checkout_enabled` | `true` | Auto-Checkout aktiv (`true`) oder deaktiviert (`false`) |
+| `auto_checkout_enabled` | `true` | Auto-Checkout aktiv (`true`) oder deaktiviert (`false`) — Werte werden strikt gegen `'true'` geprüft, siehe Fehlerbehebungs-Nachtrag in Kapitel 17 |
 | `auto_checkout_time` | `20:00` | Uhrzeit im Format HH:MM |
 | `data_retention_days` | `365` | Aufbewahrungsdauer in Tagen; `0` = deaktiviert (unbegrenzt) |
 | `notify_host_on_arrival` | `true` | Gastgeber per Mail benachrichtigen, wenn Besucher eintrifft (erfordert konfigurierten Verzeichniszugriff, siehe Kapitel 7) |
+| `privacy_policy_enabled` | `true` | Eigener Datenschutztext aktiv (`true`) statt Standard-Link |
+| `privacy_policy_text` | *(leer)* | Eigener Hinweistext für die Checkbox im Check-in-Formular; leer = Standard-Link auf abat.de/datenschutz |
+| `entra_sync_enabled` | `false` | Geplanter täglicher Gastgeber-Sync gegen Entra ID aktiv |
+| `entra_sync_filter` | *(leer)* | Optionaler OData-`$filter` für den Graph-`/users`-Abruf |
+| `entra_last_sync_at` | — | Zeitstempel des letzten Sync-Laufs (intern gepflegt) |
+| `entra_last_sync_result` | — | JSON mit `{created, updated, deactivated, total}` des letzten Laufs (intern gepflegt) |
+
+#### `visit_purposes` — Besuchszwecke
+| Spalte | Typ | Beschreibung |
+|---|---|---|
+| id | SERIAL PK | |
+| name | TEXT UNIQUE NOT NULL | z.B. „Besprechung", „Lieferung" |
+| sort_order | INTEGER | Reihenfolge in Dropdown/Liste |
+| active | BOOLEAN | false = Soft-Delete, bleibt in historischen Besuchen referenzierbar |
+
+> Bei Erstinstallation werden fünf Standardzwecke automatisch angelegt: Besprechung, Lieferung, Interview, Wartung, Sonstiges.
+
+#### `sso_allowed_users` — Zugriffsliste für Microsoft-SSO-Login
+| Spalte | Typ | Beschreibung |
+|---|---|---|
+| email | TEXT PK | Kleingeschrieben |
+| role | TEXT | `admin` oder `user` — wird bei jedem SSO-Login auf den Benutzer synchronisiert |
+| created_at | TIMESTAMPTZ | |
+
+> Ersetzt die frühere domainweite Allowlist (`sso_allowed_domains`/`SSO_ALLOWED_DOMAINS`) — siehe Kapitel 7. Nur hier gelistete E-Mail-Adressen dürfen sich per SSO anmelden, unabhängig davon, ob bereits ein lokaler Account existiert.
 
 ---
 
@@ -464,6 +502,40 @@ Macht einen Checkout rückgängig — nur solange `checked_out_at` auf den heuti
 
 **Fehler:** `400` „Besuch ist nicht ausgecheckt" bzw. „Nur am selben Tag rückgängig machbar".
 
+#### `PUT /visits/:id/times`
+Korrigiert Check-in- und/oder Check-out-Zeit nachträglich. Beide Felder optional — nur mitgeschickte Werte werden geändert; `checked_out_at: null` löscht die Check-out-Zeit wieder (Besuch bleibt sonst unverändert). Für jeden eingeloggten Nutzer verfügbar (kein admin-only), im Frontend über das Stift-Symbol in der Besucherliste erreichbar.
+
+**Body:**
+```json
+{ "checked_in_at": "2026-08-17T09:15:00.000Z", "checked_out_at": "2026-08-17T17:30:00.000Z" }
+```
+
+**Fehler:** `400` bei ungültigem Datum oder wenn Check-out vor Check-in läge, `404` wenn der Visit nicht existiert.
+
+---
+
+### Besuchszwecke
+
+#### `GET /visit-purposes`
+Alle aktiven Besuchszwecke, sortiert nach `sort_order`. Öffentlich (Kiosk/Check-in-Formular braucht dies ohne Login).
+
+#### `POST /visit-purposes`
+Neuen Besuchszweck anlegen (ans Ende der Sortierung angehängt).
+
+#### `PUT /visit-purposes/reorder`
+Setzt `sort_order` für mehrere Einträge in einem Rutsch (Drag-Handling im Frontend).
+
+**Body:**
+```json
+{ "order": [{ "id": 3, "sort_order": 0 }, { "id": 1, "sort_order": 1 }] }
+```
+
+#### `PUT /visit-purposes/:id`
+Name und/oder Sortierung eines Eintrags ändern.
+
+#### `DELETE /visit-purposes/:id`
+Soft-Delete (`active = false`) — bleibt in historischen Besuchen referenzierbar.
+
 ---
 
 ### Gastgeber
@@ -571,18 +643,62 @@ Gibt alle Einstellungen als flaches Objekt zurück.
 
 **Antwort:**
 ```json
-{ "auto_checkout_enabled": "1", "auto_checkout_time": "20:00" }
+{ "auto_checkout_enabled": "true", "auto_checkout_time": "20:00" }
 ```
+
+> **Wertformat:** Boolesche Settings werden konsequent als String `"true"`/`"false"` gespeichert und gelesen (nicht `"1"`/`"0"`) — `auto-checkout.js` prüft z.B. strikt `=== 'true'`. Siehe Nachtrag in Kapitel 17 zu einem Bug, der genau aus diesem Formatunterschied entstand.
 
 #### `PUT /settings`
 Aktualisiert Einstellungen. Nur erlaubte Keys werden akzeptiert. Nur `admin`.
 
 **Body:**
 ```json
-{ "auto_checkout_enabled": "0", "auto_checkout_time": "19:30", "data_retention_days": "180", "notify_host_on_arrival": "false" }
+{ "auto_checkout_enabled": "false", "auto_checkout_time": "19:30", "data_retention_days": "180", "notify_host_on_arrival": "false", "privacy_policy_enabled": "true", "privacy_policy_text": "Eigener Hinweistext…" }
 ```
 
-> Nach Änderung der Checkout-Zeit muss das Backend neugestartet werden: `pm2 restart visitor-mgmt`. Die Aufbewahrungsdauer wird beim nächsten täglichen Lauf automatisch übernommen.
+> Nach Änderung der Checkout-**Zeit** muss das Backend neugestartet werden: `pm2 restart visitor-mgmt` (der nächste Lauf wird beim Start einmalig berechnet). Der **Enabled/Disabled-Toggle** sowie die Aufbewahrungsdauer werden dagegen bei jedem geplanten Lauf frisch aus der DB gelesen — hier ist kein Neustart nötig.
+
+#### `GET /settings/privacy-policy`
+Öffentlich (Kiosk/Check-in-Formular). Liefert `{ enabled, text }` für die Datenschutz-Checkbox.
+
+#### `POST /settings/gdpr/cleanup`
+Löst die Datenschutz-Bereinigung (siehe Kapitel 12) manuell und sofort aus, unabhängig vom täglichen Lauf. Nur `admin`.
+
+**Antwort:**
+```json
+{ "visits": 12, "visitors": 3, "prereg": 5 }
+```
+
+#### `GET /settings/sso-allowed-users` / `POST /settings/sso-allowed-users` / `DELETE /settings/sso-allowed-users/:email`
+Verwaltet die Zugriffsliste für Microsoft-SSO-Login (siehe Kapitel 7). Nur `admin`.
+
+**POST-Body:**
+```json
+{ "email": "max.mustermann@abat.de", "role": "user" }
+```
+`role` ist entweder `admin` oder `user` (alles andere fällt auf `user` zurück); ein erneutes `POST` auf eine bereits gelistete E-Mail aktualisiert nur die Rolle.
+
+---
+
+### Gastgeber-Sync (Entra ID)
+
+Alle Endpunkte nur `admin`.
+
+#### `GET /entra-sync/config` / `PUT /entra-sync/config`
+Liest bzw. setzt `{ enabled, filter }` — siehe `system_settings`-Keys `entra_sync_enabled`/`entra_sync_filter` in Kapitel 5.
+
+#### `GET /entra-sync/status`
+Letzter Sync-Zeitpunkt + Ergebnis.
+
+**Antwort:**
+```json
+{ "lastSyncAt": "2026-08-17T02:00:00.000Z", "lastResult": { "created": 2, "updated": 5, "deactivated": 1, "total": 84 } }
+```
+
+#### `POST /entra-sync/sync`
+Löst einen Sync-Lauf sofort aus (zusätzlich zum täglichen Scheduler). Antwortet mit demselben Ergebnisobjekt wie `lastResult` oben.
+
+**Fehler:** `503` wenn der Verzeichniszugriff nicht konfiguriert ist (siehe Kapitel 7), `502` bei einem Graph-API-Fehler.
 
 ---
 
@@ -626,13 +742,17 @@ Das System nutzt den **OAuth2 Authorization Code Flow** über Microsoft Entra ID
     und verwirft ihn danach (einmalig nutzbar)
 7.  Backend tauscht Code gegen Access-Token (MSAL)
 8.  Backend ruft Microsoft Graph API ab: GET /v1.0/me → echte E-Mail + Displayname
-9.  Falls User noch nicht existiert: ggf. Domain-Prüfung (SSO_ALLOWED_DOMAINS),
-    dann werden User + Host automatisch angelegt
-10. Backend stellt JWT aus, hinterlegt es hinter einem kurzlebigen
+9.  Zugriffsliste-Prüfung: E-Mail muss in `sso_allowed_users` stehen — bei
+    jedem Login, nicht nur beim ersten (Redirect mit ?error=not_allowed,
+    falls nicht gelistet; bestehende User werden bei Rollenabweichung
+    zwischen Zugriffsliste und lokalem Account sofort synchronisiert)
+10. Falls User noch nicht existiert: User + Host automatisch angelegt,
+    Rolle aus der Zugriffsliste übernommen
+11. Backend stellt JWT aus, hinterlegt es hinter einem kurzlebigen
     Einmal-Code und leitet zu /auth-callback?code=… weiter (kein Token in der URL)
-11. Frontend (AuthCallback.jsx) ruft POST /api/auth/microsoft/exchange
+12. Frontend (AuthCallback.jsx) ruft POST /api/auth/microsoft/exchange
     mit { code } auf und erhält das JWT im Response-Body
-12. Frontend speichert Token, leitet auf /dashboard weiter
+13. Frontend speichert Token, leitet auf /dashboard weiter
 ```
 
 > Details zu state-CSRF-Schutz und Austauschcode-Mechanismus: siehe [Kapitel 17, Sicherheit](#17-sicherheit).
@@ -660,11 +780,16 @@ Bei **weiteren Logins** desselben Accounts:
 
 > Wurden Accounts noch mit dem UPN angelegt (vor der Graph-API-Umstellung), müssen E-Mail-Adressen in Einstellungen → Benutzer manuell korrigiert werden.
 
-### Domain-Allowlist für Auto-Provisionierung (optional)
+### Zugriffsliste für SSO-Login (Einstellungen → Microsoft SSO)
 
-Über `sso_allowed_domains` (kommagetrennte Liste, z.B. `abatplus.de,abat.de`, editierbar unter Einstellungen → Microsoft SSO) kann eingeschränkt werden, welche E-Mail-Domains bei der **erstmaligen** SSO-Anmeldung automatisch einen neuen Account erhalten. Ist der Wert gesetzt und die Domain des Microsoft-Kontos nicht enthalten, wird die Auto-Provisionierung abgelehnt (Redirect mit `?error=domain_not_allowed`) — bestehende Accounts können sich unabhängig davon weiterhin anmelden.
+Ersetzt seit August 2026 die frühere domainweite Allowlist (`sso_allowed_domains`/`SSO_ALLOWED_DOMAINS`). Statt ganzer E-Mail-Domains wird jetzt **jede einzelne** zum Login berechtigte Adresse explizit eingetragen (Tabelle `sso_allowed_users`, verwaltet über die API-Endpunkte in Kapitel 6 bzw. den Abschnitt „Zugriffsliste" im SSO-Einstellungstab).
 
-Ist der Wert **leer** (aktueller Stand in der Produktivumgebung), ändert sich nichts am bisherigen Verhalten: Jeder erfolgreich gegen den konfigurierten Azure-Tenant authentifizierte Nutzer kann automatisch angelegt werden. Sobald die Ziel-Domain(s) feststehen, wird empfohlen, die Allowlist produktiv zu setzen.
+- **Bei jedem** Login geprüft, nicht nur beim ersten — eine E-Mail von der Liste entfernen sperrt auch bestehende Accounts sofort aus, nicht nur zukünftige Neuanlagen.
+- Die Rolle (`admin`/`user`) wird direkt beim Eintrag in der Zugriffsliste festgelegt und bei **jedem** Login mit dem lokalen `users`-Datensatz synchronisiert — eine Rollenänderung in der Zugriffsliste wirkt beim nächsten Login des Nutzers, ohne manuellen Schritt in „Einstellungen → Benutzer".
+- Ist die E-Mail nicht gelistet, wird die Anmeldung abgelehnt: Redirect mit `?error=not_allowed`.
+- Es gibt **keinen** `.env`-Fallback mehr für diese Liste (anders als bei Tenant-ID/Client-ID/Client-Secret) — sie lebt ausschließlich in der Datenbank und muss über die UI gepflegt werden.
+
+> **Migrationshinweis:** Bei der Umstellung von der Domain- auf die Zugriffslisten-Allowlist muss für jeden bisher per Domain automatisch zugelassenen Mitarbeiter einmalig ein Eintrag in der neuen Zugriffsliste angelegt werden — sonst werden auch bereits bestehende Accounts beim nächsten Login ausgesperrt.
 
 ### Azure App Registration einrichten — eine Registrierung für Login UND Verzeichnis
 
@@ -686,11 +811,23 @@ App-Registrierung → Zertifikate & Geheimnisse → Neuer geheimer Clientschlüs
 
 **API-Berechtigungen:** beide Sets aus obiger Liste hinzufügen; für die Anwendungsberechtigungen (`User.Read.All`, `Mail.Send`) ist Administratorzustimmung nötig.
 
-**Konfiguration in der App:** Tenant-ID, Client-ID, Client Secret sowie die Domain-Allowlist und das Absender-Postfach für Gastgeber-Mails werden unter **Einstellungen → Microsoft SSO** eingetragen (dort auch die Umleitungs-URI zum Kopieren und eine Statusanzeige „Konfiguriert"/„Nicht konfiguriert"). Alternativ weiterhin per `.env` möglich (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`, `SSO_ALLOWED_DOMAINS`, `NOTIFY_FROM_EMAIL`) — die `.env`-Werte dienen nur noch als Fallback, falls in der Datenbank nichts hinterlegt ist; ein in den Einstellungen gespeicherter Wert hat Vorrang. Änderungen über die Einstellungsseite wirken sofort, ohne Neustart.
+**Konfiguration in der App:** Tenant-ID, Client-ID, Client Secret und das Absender-Postfach für Gastgeber-Mails werden unter **Einstellungen → Microsoft SSO** eingetragen (dort auch die Umleitungs-URI zum Kopieren, eine Statusanzeige „Konfiguriert"/„Nicht konfiguriert" und die Zugriffsliste). Tenant-ID/Client-ID/Client-Secret sind alternativ weiterhin per `.env` möglich (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`) — dienen dann nur als Fallback, falls in der Datenbank nichts hinterlegt ist; ein in den Einstellungen gespeicherter Wert hat Vorrang. Änderungen über die Einstellungsseite wirken sofort, ohne Neustart. Die Zugriffsliste selbst (siehe voriger Abschnitt) hat **keinen** `.env`-Fallback.
 
 Ist weder in der Datenbank noch in `.env` ein vollständiger Satz (Tenant-ID, Client-ID, Client Secret) hinterlegt, liefern `/api/auth/microsoft`, `/hosts/search-ad` und `/hosts/:id/ad-check` `503`; der Mailversand wird still übersprungen. Der Rest der App bleibt ohne diese Konfiguration voll nutzbar — Gastgeber lassen sich in diesem Fall weiterhin nur über bereits bekannte lokale Einträge zuordnen.
 
 > **Betriebshinweis:** Das Client Secret läuft nach der in Azure gewählten Frist ab — rechtzeitig erneuern (Einstellungen → Microsoft SSO oder `.env`).
+
+### Gastgeber-Sync (Entra ID)
+
+**Service:** `backend/src/services/entra-sync.js` + `entra-sync-schedule.js`
+
+Zusätzlich zur Autocomplete-Suche (on-demand) lässt sich ein **geplanter** Sync aktivieren, der alle Benutzer aus dem Verzeichnis (`GET /v1.0/users`, dieselbe App-Registrierung, Anwendungsberechtigung `User.Read.All`) als Gastgeber einpflegt:
+
+- Läuft einmal beim Backend-Start (Nachholung, falls der Server länger aus war) und danach alle 24 Stunden (`entra-sync-schedule.js`) — sofern `entra_sync_enabled = true`.
+- Abgleich per `hosts.ad_object_id`: bekanntes AD-Objekt → Name/E-Mail aktualisieren; neues AD-Objekt, aber E-Mail bereits als lokaler Gastgeber ohne `ad_object_id` bekannt → verknüpfen statt duplizieren; sonst neu anlegen.
+- Gastgeber, die zuvor per Sync/Login verknüpft waren (`ad_object_id` gesetzt), aber im aktuellen Sync-Ergebnis fehlen, werden **deaktiviert** (`active = false`), nicht gelöscht — historische Besuche bleiben referenzierbar.
+- Optionaler OData-`$filter` (z.B. `accountEnabled eq true`) schränkt ein, welche Verzeichnis-Benutzer berücksichtigt werden.
+- Manueller Anstoß jederzeit über „Jetzt synchronisieren" (Einstellungen → Gastgeber-Sync) oder `POST /entra-sync/sync`.
 
 ---
 
@@ -842,37 +979,55 @@ Löscht täglich alte Besuchsdaten automatisch. Läuft einmal beim Backend-Start
 
 ## 13. Einstellungen
 
-Erreichbar unter `/settings`. Fünf Tabs für Admins, ein Tab für normale Benutzer:
+Erreichbar unter `/settings`. Gruppierte Navigation links (Betrieb · Zugriff & Benutzer · System · Konto) statt einzelner Tabs-Leiste — welche Gruppen/Einträge sichtbar sind, hängt von der Rolle ab (Admins sehen alles, normale Benutzer nur „Konto → Passwort").
 
-### Auto-Checkout (nur admin)
+### Auto-Checkout (nur admin, Gruppe „Betrieb")
 - Toggle: Auto-Checkout ein- oder ausschalten
 - Uhrzeit-Feld: Zeit im Format HH:MM
 - Zweiter Toggle im selben Tab: „Gastgeber bei Ankunft per Mail benachrichtigen" (`notify_host_on_arrival`) — setzt eine konfigurierte Verzeichnis-Anbindung voraus (Kapitel 7)
-- Speichern → schreibt in `system_settings` Tabelle
-- Nach Zeitänderung: `pm2 restart visitor-mgmt` nötig
+- Speichern → schreibt in `system_settings` Tabelle (`auto_checkout_enabled` als `"true"`/`"false"`)
+- Nach Zeitänderung: `pm2 restart visitor-mgmt` nötig; der Enabled-Toggle selbst wirkt ohne Neustart
 
-### Datenspeicherung (nur admin)
+### Besuchszwecke (nur admin, Gruppe „Betrieb")
+- Liste mit Auf/Ab-Pfeilen zum Sortieren, Bearbeiten, Deaktivieren
+- „Hinzufügen" legt einen neuen Zweck ans Ende der Liste
+
+### Datenspeicherung (nur admin, Gruppe „System")
 - Preset-Buttons: 30 / 60 / 90 / 180 Tage / 1 Jahr / Benutzerdefiniert / Deaktiviert
 - Benutzerdefiniert: beliebige Tageszahl als Eingabe
 - Speichern → schreibt `data_retention_days` in `system_settings`
+- „Jetzt bereinigen"-Button löst die Löschung sofort aus (`POST /settings/gdpr/cleanup`), unabhängig vom täglichen automatischen Lauf
+- Zweiter Bereich im selben Tab: Datenschutztext für die Kiosk-Checkbox konfigurierbar (`privacy_policy_enabled`/`privacy_policy_text`)
 
 ### Passwort ändern (alle)
 - Aktuelles Passwort + neues Passwort + Bestätigung
 - Mindestlänge: 8 Zeichen
 - Für reine SSO-Nutzer (kein Passwort gesetzt) nicht nutzbar
 
-### Benutzer (nur admin)
+### Benutzer (nur admin, Gruppe „Zugriff & Benutzer")
 - Tabelle aller aktiven Benutzer mit Name, E-Mail, Rolle
 - Erstellen: Name, E-Mail, Passwort, Rolle
 - Bearbeiten: alle Felder; Passwort leer lassen = unverändert
 - Löschen: hard-delete wenn keine Besuche erfasst; sonst Deaktivierung (Historien-Schutz)
 - Rollenwechsel: `user` ↔ `admin`
 
-### Gastgeber (nur admin)
+### Gastgeber (nur admin, Gruppe „Zugriff & Benutzer")
 - Read-only Liste der lokal bekannten Gastgeber (Name, E-Mail)
 - „Prüfen"-Button je Zeile → AD-Gegencheck (`GET /hosts/:id/ad-check`), Status-Badge zeigt `ok`/nicht gefunden/deaktiviert/Namensabweichung/keine E-Mail
 - Ohne konfigurierten Verzeichniszugriff (Kapitel 7) zeigt der Tab einen entsprechenden Hinweis statt Fehlern
 - Keine eigene Gastgeber-Verwaltungsseite mehr — Gastgeber werden automatisch aus dem AD angelegt (siehe Kapitel 5, Tabelle `hosts`)
+
+### Gastgeber-Sync (nur admin, Gruppe „Zugriff & Benutzer")
+- Toggle: geplanten täglichen Sync aktivieren
+- Optionales Graph-`$filter`-Feld
+- Statusbereich: Zeitpunkt + Ergebnis (`created`/`updated`/`deactivated`) des letzten Laufs
+- „Jetzt synchronisieren"-Button für einen sofortigen manuellen Lauf
+- Details siehe Kapitel 7, Abschnitt „Gastgeber-Sync (Entra ID)"
+
+### Microsoft SSO (nur admin, Gruppe „Zugriff & Benutzer")
+- Tenant-ID, Client-ID, Client Secret, Absender-Postfach für Gastgeber-Mails
+- Statusanzeige „Konfiguriert"/„Nicht konfiguriert", Umleitungs-URI zum Kopieren
+- Zugriffsliste: E-Mail + Rolle hinzufügen/entfernen (siehe Kapitel 7)
 
 ---
 
@@ -945,14 +1100,15 @@ pm2 stop visitor-mgmt             # Anhalten
 | `AZURE_CLIENT_ID` | Fallback | Client-ID der Azure App Registration — Fallback, falls in Einstellungen → Microsoft SSO nichts hinterlegt ist |
 | `AZURE_TENANT_ID` | Fallback | Tenant-ID des Entra ID-Verzeichnisses — Fallback (s.o.) |
 | `AZURE_CLIENT_SECRET` | Fallback | Clientgeheimnis — Fallback (s.o.), läuft ab, muss erneuert werden! |
-| `SSO_ALLOWED_DOMAINS` | Fallback | Kommagetrennte Liste erlaubter E-Mail-Domains für die SSO-Auto-Provisionierung — Fallback, siehe [Kapitel 7](#7-microsoft-sso) |
 | `NOTIFY_FROM_EMAIL` | Fallback | Absender-Postfach für Gastgeber-Ankunfts-Mails — Fallback (s.o.) |
 | `ADMIN_EMAIL` | Optional | Initialer Admin (nur beim allerersten Start wirksam) |
 | `ADMIN_PASSWORD` | Optional | Initiales Admin-Passwort |
 
 > **JWT_SECRET:** Niemals leer lassen, niemals in Git einchecken. Bei Änderung werden alle bestehenden Tokens ungültig — alle Nutzer müssen sich neu anmelden. `auth.js` und `auth-microsoft.js` werfen beim Start einen Fehler, wenn die Variable fehlt — es gibt keinen unsicheren Default-Fallback mehr (siehe [Kapitel 17, Sicherheit](#17-sicherheit)).
 
-> **Microsoft-SSO-Werte:** `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET`/`SSO_ALLOWED_DOMAINS`/`NOTIFY_FROM_EMAIL` sind nur noch der Fallback — primär werden sie unter Einstellungen → Microsoft SSO in der DB (`system_settings`) gepflegt, ein dort gesetzter Wert hat Vorrang und wirkt sofort ohne Neustart. Das Client Secret läuft nach 1–2 Jahren ab (konfigurierbar in Azure); bei Ablauf schlägt der Microsoft-Login still fehl.
+> **Microsoft-SSO-Werte:** `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_CLIENT_SECRET`/`NOTIFY_FROM_EMAIL` sind nur noch der Fallback — primär werden sie unter Einstellungen → Microsoft SSO in der DB (`system_settings`) gepflegt, ein dort gesetzter Wert hat Vorrang und wirkt sofort ohne Neustart. Das Client Secret läuft nach 1–2 Jahren ab (konfigurierbar in Azure); bei Ablauf schlägt der Microsoft-Login still fehl. Die Zugriffsliste (`sso_allowed_users`, siehe Kapitel 7) hat **keinen** `.env`-Fallback — sie lebt ausschließlich in der Datenbank.
+
+> **ADMIN_EMAIL/ADMIN_PASSWORD nicht gesetzt?** Ohne diese beiden Variablen legt `database.js` beim allerersten Start einen Admin mit den Defaultwerten `admin@example.com` / `ChangeMe123!` an (siehe [Kapitel 17, Offener Punkt](#17-sicherheit)) — vor dem Produktivbetrieb prüfen und ggf. sofort ändern.
 
 ---
 
@@ -1057,7 +1213,7 @@ tail -f /root/.pm2/logs/visitor-mgmt-error.log
 
 - **CSRF-Schutz (state-Parameter):** Die OAuth-Autorisierungsanfrage enthält jetzt einen unvorhersehbaren, einmalig gültigen `state`-Parameter (`crypto.randomBytes(24)`, serverseitig im Speicher gehalten, 5 Minuten TTL). Der Callback validiert den zurückgegebenen `state` gegen die Liste offener Anfragen, bevor er fortfährt, und löscht ihn danach (Einmalgebrauch). Vorher gab es überhaupt keinen `state`-Parameter — eine klassische OAuth-CSRF-Lücke, über die ein Angreifer den Browser eines Opfers dazu bringen konnte, einen vom Angreifer initiierten Auth-Flow abzuschließen.
 - **Kein Token mehr im URL-Query-String:** Der Callback leitete vorher direkt mit `${APP_URL}/auth-callback?token=${jwt}` weiter — das JWT landete dadurch in Nginx-Access-Logs, Browser-Historie und im `Referer`-Header nachfolgender Requests. Jetzt stellt der Callback stattdessen einen kurzlebigen, einmalig einlösbaren Austauschcode aus (`crypto.randomBytes(24)`, 60 Sekunden TTL, serverseitig im Speicher) und leitet mit `?code=…` weiter. Das Frontend (`frontend/src/pages/AuthCallback.jsx`) ruft den neuen Endpunkt `POST /api/auth/microsoft/exchange` mit `{ code }` im JSON-Body auf und erhält `{ token }` zurück, sofern der Code gültig und noch nicht eingelöst ist (sonst `400`). Das eigentliche JWT wird jetzt ausschließlich per POST-Body über HTTPS übertragen, nie mehr über eine URL.
-- **Neu: optionale Domain-Allowlist** über `SSO_ALLOWED_DOMAINS` — siehe [Kapitel 7, Domain-Allowlist für Auto-Provisionierung](#7-microsoft-sso).
+- **Neu: optionale Domain-Allowlist** über `SSO_ALLOWED_DOMAINS` (mittlerweile durch die feingranulare Zugriffsliste ersetzt — siehe Nachtrag August 2026 unten und [Kapitel 7](#7-microsoft-sso)).
 - **Betriebshinweis:** Microsoft SSO ist in der aktuellen Produktivumgebung **noch nicht konfiguriert** (`AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET` sind in der Live-`.env` leer) — der Endpunkt liefert aktuell `503 „Microsoft SSO nicht konfiguriert"`. Die oben beschriebenen Härtungsmaßnahmen sind vollständig implementiert und einsatzbereit, wurden auf diesem Server aber noch nicht Ende-zu-Ende gegen einen echten Azure-Tenant getestet. Einrichtung siehe [installation.md, Kapitel 5](./installation.md#5-microsoft-sso-einrichten-azure).
 
 ### Backup-Skript-Bug behoben
@@ -1073,6 +1229,29 @@ Aus SQLite (better-sqlite3, synchron, Einzeldatei) wurde auf PostgreSQL 16 (loka
 ### Offener Punkt — noch nicht abschließend geklärt
 
 In der Live-Datenbank existieren zwei Accounts mit generisch wirkenden Namen: `admin@example.com` und `user@example.com`. Es ist nicht abschließend geklärt, ob es sich um legitime aktive Accounts oder um übrig gebliebene Test-Accounts handelt. Dies wurde dem Betreiber zur Prüfung gemeldet (umbenennen, Passwortstärke verifizieren oder deaktivieren) — es wurde noch **keine automatische Aktion** vorgenommen. Vor einem produktiven Go-Live sollten diese Accounts geprüft werden (siehe auch [installation.md, Kapitel 11](./installation.md#11-erster-start--test)).
+
+### Feature- und Härtungs-Batch: Entra-Sync, editierbare Zeiten, Produktiv-Härtung (17. August 2026)
+
+**Neue Features:**
+- Geplanter Gastgeber-Sync gegen Entra ID (`entra-sync.js`/`entra-sync-schedule.js`) — siehe Kapitel 7.
+- Check-in-/Check-out-Zeit nachträglich korrigierbar (`PUT /visits/:id/times`).
+- Besuchszwecke (`visit_purposes`) — konfigurierbar, sortierbar, im Check-in-Formular wählbar.
+- SSO-Zugriffsliste (`sso_allowed_users`) ersetzt die domainweite Allowlist — siehe Kapitel 7.
+- Konfigurierbarer Datenschutztext + manuell auslösbare GDPR-Bereinigung.
+- Settings-Seite auf gruppierte Navigation umgestellt (Betrieb / Zugriff & Benutzer / System / Konto statt einzelner Tab-Leiste).
+
+**Produktiv-Härtung:**
+- DB-Indizes ergänzt (`visits.*`, `hosts.ad_object_id`, `hosts.email`, `preregistrations.*`) — vorher kein einziger Index im Schema.
+- `pool.on('error', …)` ergänzt — ein Fehler auf einem idle pg-Client hätte vorher den ganzen Prozess unbehandelt abstürzen lassen.
+- Graceful Shutdown (`SIGTERM`/`SIGINT` schließen HTTP-Server und pg-Pool sauber, statt bei `pm2 restart` mitten in Requests gekillt zu werden).
+- `pm2`-Eintrag (`/opt/ecosystem.config.js`) um `NODE_ENV: production`, `max_restarts`, `max_memory_restart`, `watch: false` ergänzt — vorher als einzige App auf dem Server ohne diese Schutzmechanismen.
+- `backup.sh` sichert jetzt zusätzlich `backend/uploads/` (Dokumente, Signaturen) als `tar.gz`, nicht mehr nur die Datenbank.
+- Alle npm-Abhängigkeiten aktualisiert, Vulnerabilities behoben (Backend: 1 High über `@azure/msal-node`-Kette; Frontend: 4 High/1 Moderate über `react-router`, `postcss`, `nanoid`).
+
+**Bugfixes:**
+- **Auto-Checkout blieb nach dem ersten Speichern in den Einstellungen stumm stehen:** Das Frontend schrieb `auto_checkout_enabled` als `"1"`/`"0"`, der Scheduler (`auto-checkout.js`) prüft aber strikt `=== 'true'`. Sobald ein Admin den Tab einmal speicherte — unabhängig vom gewählten Wert —, kippte der Wert auf `"1"`/`"0"` und der tägliche Checkout-Lauf brach seitdem jeden Tag stillschweigend ab, ohne Fehler irgendwo. Behoben, indem das Frontend jetzt `"true"`/`"false"` schreibt, konsistent mit dem Rest der Codebase.
+- **SSO-Fehlermeldungen zeigten Rohcode statt Klartext:** Fehler, die der Server direkt an `/login?error=xxx` weiterleitet (z.B. `not_allowed`, `sso_cancelled`, `invalid_state`), zeigte die Login-Seite als nackten Code an — die Übersetzungstabelle existierte nur in `AuthCallback.jsx`, das für diesen Redirect-Pfad nie durchlaufen wird. `Login.jsx` hat jetzt dieselbe Mapping-Tabelle.
+- **`db.transaction()` war keine echte Transaktion:** `BEGIN`/`COMMIT`/`ROLLBACK` liefen auf einem eigens ausgecheckten Client, die Queries im Callback aber weiterhin über `db.prepare().run()` — intern `pool.query()` — also auf einer anderen Connection. Jedes Statement committete faktisch sofort einzeln; ein `ROLLBACK` bei einem Fehler griff ins Leere. Betraf `visitors.js` (Besucher+Visits löschen), `data-retention.js` (GDPR-Bereinigung), `visit-purposes.js` (Reorder) und `settings.js` (Bulk-Settings-Update). `transaction(fn)` gibt `fn` jetzt ein an den transaktionalen Client gebundenes `{prepare, exec}`-Objekt mit; alle vier Aufrufstellen wurden entsprechend angepasst und das Rollback-Verhalten live gegen die DB verifiziert.
 
 ### Nachträge aus dem Merge-/AD-Feature-Batch (Juli 2026)
 
@@ -1124,9 +1303,14 @@ Mögliche Fehler aus der Callback-URL (`?error=...`):
 | Fehler | Ursache |
 |---|---|
 | `sso_failed` | MSAL konnte keine Auth-URL generieren — AZURE_* prüfen |
+| `sso_not_configured` | Tenant-ID/Client-ID/Client Secret unvollständig (weder DB noch `.env`) |
 | `sso_cancelled` | Nutzer hat Anmeldung abgebrochen |
 | `sso_token_failed` | Code-Austausch fehlgeschlagen — Client Secret abgelaufen? |
+| `invalid_state` | `state`-Parameter fehlt/unbekannt/abgelaufen — mögliches CSRF oder Anfrage zu alt (> 5 Min.) |
 | `no_email` | Microsoft-Profil hat keine E-Mail-Adresse |
+| `not_allowed` | E-Mail steht nicht auf der Zugriffsliste — unter Einstellungen → Microsoft SSO ergänzen (siehe Kapitel 7) |
+
+> Alle Codes werden auf der Login-Seite seit dem Nachtrag „Feature- und Härtungs-Batch" (17. August 2026) als deutscher Klartext angezeigt statt als Rohcode.
 
 ### Azure Client Secret abgelaufen
 Neues Secret in Azure erstellen, `.env` aktualisieren, Backend neu starten:

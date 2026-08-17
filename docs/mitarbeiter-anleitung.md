@@ -20,11 +20,14 @@ Dein Besucher ist gerade angekommen? So gehst du vor:
    - **Unternehmen** (optional)
    - **Gastgeber** — tippe mind. 3 Buchstaben und wähle aus der Liste (Suche direkt im Firmenverzeichnis)
    - **Datum & Uhrzeit** — sind bereits mit „jetzt" ausgefüllt, kannst du bei Bedarf ändern
+   - **Besuchszweck** — optional, z.B. Besprechung, Lieferung
    - **Notizen** — optional, z.B. Grund des Besuchs
    - Setze den Haken bei **„Der Besucher wurde auf die [Datenschutzerklärung](https://www.abat.de/datenschutz) hingewiesen"**
 3. Klicke auf **„Einchecken"**
 
 Der Besucher erscheint sofort in der Liste mit deinem Namen als Erfasser. Der Gastgeber erhält ggf. automatisch eine Mail, dass sein Besuch eingetroffen ist.
+
+**Zeit falsch eingetragen?** Klicke in der Besucherliste auf das Stift-Symbol bei dem Eintrag — dort lässt sich die Check-in-Zeit (und, falls bereits ausgecheckt, die Check-out-Zeit) nachträglich korrigieren.
 
 ---
 

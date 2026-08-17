@@ -1,223 +1,63 @@
 # abat+ Besucherverwaltung
 
-Schlanke, mitarbeitergesteuerte Besucherverwaltung für abat+. Mitarbeiter checken Besucher direkt vom eigenen Desktop oder Handy ein — kein Empfangskiosk, keine Selbstbedienung.
+Individuell für **abat+** angepasste Instanz des allgemeinen Besucherverwaltungssystems: schlank, mitarbeitergesteuert. Mitarbeiter checken Besucher direkt vom eigenen Desktop oder Handy ein — kein Empfangskiosk, keine Selbstbedienung durch den Besucher. Gegenüber der Ausgangsversion wurden Features wie Kiosk-Modus, Host-Portal, QR-Scanner, Badge-Druck und Evakuierungsliste bewusst entfernt (Details siehe [Projektdokumentation](docs/dokumentation.md#1-projektübersicht)).
 
-**Stack:** React 19 · Vite · Tailwind CSS 4 · Express.js 5 · PostgreSQL · JWT · Microsoft SSO (MSAL)
+## Dokumentation
 
----
+| Dokument | Beschreibung |
+|---|---|
+| [Installation](docs/installation.md) | Setup direkt auf Ubuntu/Debian mit Nginx, pm2 & PostgreSQL |
+| [Projektdokumentation](docs/dokumentation.md) | Vollständige technische Dokumentation: Architektur, API, DB-Schema, Features, Sicherheit |
+| [Mitarbeiter-Anleitung](docs/mitarbeiter-anleitung.md) | Kurzanleitung für den täglichen Gebrauch (Check-in/-out, Vorregistrierung) |
+
+## Tech Stack
+
+| Bereich | Technologien |
+|---|---|
+| **Frontend** | React 19, Vite 8, Tailwind CSS 4 |
+| **Backend** | Node.js (≥ 22), Express.js 5, `pg` (PostgreSQL, async Pool), JWT |
+| **Sicherheit** | helmet, express-rate-limit, bcryptjs (cost 12) |
+| **Services** | MSAL (Microsoft SSO), Microsoft Graph (AD-Suche, Gastgeber-Sync, Mailversand) |
+| **Infra** | Nginx, pm2, Cloudflare, PostgreSQL 16 |
 
 ## Features
 
-- **Check-in / Check-out** — Mitarbeiter checkt Besucher ein; „Erfasst am [Zeit] durch [Name]" wird gespeichert
-- **Vorregistrierungen** — Besucher vorab eintragen, bei Ankunft per Klick einchecken
-- **Microsoft SSO** — Login mit Firmenkonto; User + Mitarbeiter-Eintrag werden automatisch beim ersten Login angelegt
-- **Auto-Checkout** — täglich zur konfigurierten Uhrzeit (Standard: 20:00), abschaltbar
-- **Datenschutz-Checkbox** — kein Unterschriftspad
-- **Vollständig responsiv** — Handy + Desktop
+- Check-in / Check-out durch den Mitarbeiter — kein Kiosk, kein Empfang
+- Check-in-/Check-out-Zeiten nachträglich korrigierbar
+- Vorregistrierungen — in derselben Besucherliste integriert, kein separater Bereich
+- Besuchszwecke — konfigurierbare, sortierbare Liste
+- **Microsoft SSO mit Zugriffsliste** — nur explizit freigeschaltete E-Mail-Adressen dürfen sich anmelden, Rolle wird bei jedem Login synchronisiert
+- **Gastgeber-Synchronisierung (Entra ID)** — Gastgeber automatisch aus Microsoft Entra ID übernehmen, täglich oder manuell (nutzt dieselbe App-Registrierung wie Microsoft SSO)
+- **Auto-Checkout** täglich zur konfigurierten Uhrzeit (Standard: 20:00), abschaltbar
+- Datenschutz-Checkbox mit konfigurierbarem Hinweistext — kein Unterschriftspad
+- Datenschutz-Bereinigung — automatisch nach Aufbewahrungsfrist, zusätzlich manuell auslösbar
+- Vollständig responsiv — Handy + Desktop gleichwertig
 
-## Rollen
-
-| Rolle | Rechte |
-|---|---|
-| `admin` | Alles inkl. Benutzerverwaltung & Einstellungen |
-| `user` | Einchecken, Auschecken, Besucher & Vorregistrierungen lesen |
-
----
-
-## Installation
-
-### Voraussetzungen
+## Schnellstart (Entwicklung)
 
 ```bash
-# Node.js 22+
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt install -y nodejs nginx postgresql
-npm install -g pm2
+# Backend
+cd backend
+cp .env.example .env   # .env ausfüllen
+npm install
+npm start               # http://localhost:3001
+
+# Frontend (separates Terminal)
+cd frontend
+npm install
+npm run dev              # http://localhost:5173  (Proxy /api → :3001)
 ```
 
-Datenbank + Rolle anlegen (einmalig):
+Vollständige Installationsanleitung (Produktivbetrieb): [docs/installation.md](docs/installation.md)
 
-```bash
-sudo -u postgres createuser visitormgmt_abatplus --pwprompt
-sudo -u postgres createdb -O visitormgmt_abatplus visitormgmt_abatplus
-```
+## Routen
 
-### 1. Repository klonen
+| Route | Beschreibung | Auth |
+|---|---|---|
+| `/login` | Anmeldung (Microsoft SSO + lokaler Fallback) | Nein |
+| `/auth-callback` | Verarbeitet OAuth-Redirect, tauscht Code gegen JWT | Nein |
+| `/dashboard` | Statistiken, letzte Aktivitäten, Check-in-Button | Ja |
+| `/visitors` | Zentrale Besucherliste — Vorregistriert / Anwesend / Ausgecheckt / Abgesagt | Ja |
+| `/settings` | Auto-Checkout, Besuchszwecke, Datenschutz, Benutzer, Gastgeber, Gastgeber-Sync, Microsoft SSO | Ja (admin für die meisten Tabs) |
 
-```bash
-git clone https://github.com/melman16384/visitor-mgmt-abatplus.git /opt/visitor-mgmt-abatplus
-```
-
-### 2. Abhängigkeiten installieren
-
-```bash
-cd /opt/visitor-mgmt-abatplus/backend && npm install
-cd /opt/visitor-mgmt-abatplus/frontend && npm install
-```
-
-### 3. Backend konfigurieren
-
-```bash
-cd /opt/visitor-mgmt-abatplus/backend
-cp .env.example .env
-nano .env
-```
-
-`.env` Inhalt:
-
-```env
-PORT=3001
-JWT_SECRET=<openssl rand -hex 64>
-PG_HOST=127.0.0.1
-PG_PORT=5432
-PG_DATABASE=visitormgmt_abatplus
-PG_USER=visitormgmt_abatplus
-PG_PASSWORD=<beim createuser vergebenes Passwort>
-APP_URL=https://deine-domain.de
-
-# Microsoft SSO (Azure App Registration)
-AZURE_CLIENT_ID=
-AZURE_TENANT_ID=
-AZURE_CLIENT_SECRET=
-
-# Initialer Admin (nur beim ersten Start wirksam)
-# ADMIN_EMAIL=admin@firma.de
-# ADMIN_PASSWORD=SicheresPasswort123!
-```
-
-Schema (Tabellen, Standard-Einstellungen, initialer Admin) wird beim ersten Start automatisch angelegt — kein manueller Migrationsschritt nötig.
-
-### 4. Frontend bauen
-
-```bash
-cd /opt/visitor-mgmt-abatplus/frontend
-npm run build
-```
-
-### 5. Nginx einrichten
-
-```bash
-nano /etc/nginx/sites-available/besucher
-```
-
-```nginx
-server {
-    listen 80;
-    server_name deine-domain.de;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name deine-domain.de;
-
-    ssl_certificate     /etc/ssl/besucher/cert.pem;
-    ssl_certificate_key /etc/ssl/besucher/key.pem;
-
-    root /opt/visitor-mgmt-abatplus/frontend/dist;
-    index index.html;
-
-    location = /index.html {
-        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
-        expires 0;
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        client_max_body_size 10M;
-    }
-
-    location ~* \.(js|css|png|jpg|svg|woff|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
-```bash
-ln -s /etc/nginx/sites-available/besucher /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
-```
-
-### 6. SSL-Zertifikat
-
-Hinter Cloudflare reicht ein selbst-signiertes Origin-Zertifikat:
-
-```bash
-mkdir -p /etc/ssl/besucher
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -days 3650 -nodes \
-  -out /etc/ssl/besucher/cert.pem \
-  -keyout /etc/ssl/besucher/key.pem \
-  -subj "/CN=deine-domain.de/O=Firma/C=DE"
-```
-
-Alternativ: Cloudflare Origin Certificate im Dashboard generieren.
-
-### 7. Backend starten
-
-```bash
-cd /opt/visitor-mgmt-abatplus/backend
-pm2 start src/index.js --name visitor-mgmt --cwd /opt/visitor-mgmt-abatplus/backend
-pm2 save
-pm2 startup   # Angezeigten Befehl ausführen
-```
-
-### 8. Erster Login
-
-Standard-Zugangsdaten nach Erstinstallation:
-
-| E-Mail | Passwort |
-|---|---|
-| `admin@example.com` | `ChangeMe123!` |
-
-> Passwort sofort unter **Einstellungen → Passwort** ändern.
-
----
-
-## Microsoft SSO einrichten
-
-**Azure Portal → Microsoft Entra ID → App-Registrierungen → Neue Registrierung**
-
-| Feld | Wert |
-|---|---|
-| Kontotypen | Nur diese Organisation |
-| Umleitungs-URI | `https://deine-domain.de/api/auth/microsoft/callback` |
-
-Benötigte Werte aus der App-Registrierung entweder in **Einstellungen → Microsoft SSO** eintragen (wirkt sofort, kein Neustart) oder als Fallback in `.env`:
-- `AZURE_CLIENT_ID` — Anwendungs-ID
-- `AZURE_TENANT_ID` — Verzeichnis-ID
-- `AZURE_CLIENT_SECRET` — Neues Clientgeheimnis
-
-API-Berechtigungen: delegiert `openid`, `profile`, `email`, `User.Read`. Dieselbe Registrierung deckt auch die Gastgeber-Verzeichnis-Anbindung ab — dafür zusätzlich Anwendungsberechtigungen `User.Read.All`, `Mail.Send` hinzufügen (Administratorzustimmung erforderlich).
-
-```bash
-pm2 restart visitor-mgmt --update-env
-```
-
-**Beim ersten Microsoft-Login** wird automatisch ein Benutzer (Rolle: `user`) und ein Mitarbeiter-Eintrag angelegt.
-
----
-
-## Updates
-
-```bash
-git pull
-cd frontend && npm run build
-pm2 restart visitor-mgmt
-```
-
-## Passwort zurücksetzen
-
-```bash
-cd /opt/visitor-mgmt-abatplus/backend
-HASH=$(node -e "const b=require('bcryptjs'); b.hash('NeuesPasswort123!',12).then(h=>process.stdout.write(h))")
-PGPASSWORD=<PG_PASSWORD aus .env> psql -h 127.0.0.1 -U visitormgmt_abatplus -d visitormgmt_abatplus \
-  -c "UPDATE users SET password_hash='$HASH' WHERE email='admin@example.com';"
-```
+Rollen: `admin` (Vollzugriff inkl. Benutzerverwaltung & Einstellungen) / `user` (Einchecken, Auschecken, Besucher & Vorregistrierungen lesen). Details siehe [docs/dokumentation.md](docs/dokumentation.md#2-benutzerrollen--berechtigungen).

@@ -200,15 +200,12 @@ Eine einzige App-Registrierung deckt **beides** ab — den interaktiven Login UN
 
 **Bevorzugt: über die App selbst konfigurieren** — nach dem ersten Start unter **Einstellungen → Microsoft SSO** (Admin-Login) Tenant-ID, Client-ID, Client Secret, optional die Domain-Allowlist und das Absender-Postfach eintragen. Wirkt sofort, kein Neustart nötig.
 
-**Alternativ per `.env`** (dient nur als Fallback, falls in den Einstellungen nichts hinterlegt ist):
+**Alternativ per `.env`** (dient nur als Fallback für Tenant-ID/Client-ID/Client-Secret, falls in den Einstellungen nichts hinterlegt ist):
 
 ```env
 AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Kommagetrennt, ohne @ — nur diese Domains dürfen sich per SSO neu registrieren (leer = keine Einschränkung)
-SSO_ALLOWED_DOMAINS=abatplus.de,abat.de
 
 # Postfach, das als Absender für Gastgeber-Ankunfts-Mails dient (muss im Tenant existieren)
 NOTIFY_FROM_EMAIL=besucher@deine-domain.de
@@ -222,7 +219,17 @@ pm2 restart visitor-mgmt --update-env
 
 > **Erst nach Eintragen aller drei Werte aktiv:** Solange Tenant-ID, Client-ID oder Client Secret leer sind (weder in den Einstellungen noch in `.env`), liefern `GET /api/auth/microsoft`, `/hosts/search-ad` und `/hosts/:id/ad-check` einen `503`-Fehler. Der lokale Admin-Login bleibt in diesem Zustand die einzige Anmeldemöglichkeit; Gastgeber lassen sich nur über bereits lokal bekannte Einträge zuordnen.
 
-> **Empfehlung:** Sobald die Ziel-Domain(s) für den Produktivbetrieb feststehen, die Allowlist setzen — das verhindert, dass sich versehentlich Konten aus fremden, im selben Azure-Tenant befindlichen Domains automatisch anlegen.
+### Zugriffsliste pflegen — wer darf sich per SSO anmelden
+
+Anders als Tenant-ID/Client-ID/Client-Secret hat die Zugriffsliste **keinen** `.env`-Fallback — sie lebt ausschließlich in der Datenbank und muss über die UI gepflegt werden:
+
+1. Admin-Login (lokaler Fallback-Account) → **Einstellungen → Microsoft SSO → Zugriffsliste**
+2. E-Mail-Adresse + gewünschte Rolle (`user`/`admin`) eintragen, **„Hinzufügen"**
+3. Erst danach kann sich diese Person per Microsoft SSO anmelden — ohne Eintrag: `?error=not_allowed`
+
+Die Prüfung läuft bei **jedem** Login, nicht nur beim ersten — ein Entfernen aus der Liste sperrt auch bereits bestehende Accounts sofort aus. Die Rolle wird bei jedem Login mit dem lokalen Konto synchronisiert.
+
+> Details und API-Endpunkte: [dokumentation.md, Kapitel 7](./dokumentation.md#7-microsoft-sso).
 
 ---
 
