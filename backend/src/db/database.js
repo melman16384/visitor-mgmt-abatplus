@@ -9,6 +9,12 @@ const pool = new Pool({
   password: process.env.PG_PASSWORD,
 });
 
+// Ohne diesen Handler wirft ein Fehler auf einem idle Client ein uncaught
+// 'error'-Event und reißt den ganzen Prozess mit runter.
+pool.on('error', (err) => {
+  console.error('[db] Unerwarteter Fehler auf idle Client:', err.message);
+});
+
 // Converts a `?`-style query (better-sqlite3 convention, kept across all call sites)
 // into Postgres's `$1, $2, ...` positional syntax.
 function toPgQuery(sql) {
@@ -28,35 +34,51 @@ function withReturningId(sql) {
   return sql;
 }
 
-function prepare(sql) {
-  const pgSql = toPgQuery(sql);
-  const pgSqlWithReturning = toPgQuery(withReturningId(sql));
-  return {
-    async get(...params) {
-      const { rows } = await pool.query(pgSql, params);
-      return rows[0];
-    },
-    async all(...params) {
-      const { rows } = await pool.query(pgSql, params);
-      return rows;
-    },
-    async run(...params) {
-      const { rows, rowCount } = await pool.query(pgSqlWithReturning, params);
-      return { changes: rowCount, lastInsertRowid: rows[0] ? rows[0].id : undefined };
-    },
-  };
+// `executor` ist entweder der Pool (Autocommit je Query) oder ein per
+// transaction() ausgecheckter Client (alle Queries auf derselben Connection,
+// zwischen BEGIN/COMMIT) — dieselbe prepare()/exec()-Logik für beide, damit
+// Code innerhalb einer Transaktion tatsächlich auf der transaktionalen
+// Connection läuft statt querbeet über den Pool.
+function makeQueryable(executor) {
+  function prepare(sql) {
+    const pgSql = toPgQuery(sql);
+    const pgSqlWithReturning = toPgQuery(withReturningId(sql));
+    return {
+      async get(...params) {
+        const { rows } = await executor.query(pgSql, params);
+        return rows[0];
+      },
+      async all(...params) {
+        const { rows } = await executor.query(pgSql, params);
+        return rows;
+      },
+      async run(...params) {
+        const { rows, rowCount } = await executor.query(pgSqlWithReturning, params);
+        return { changes: rowCount, lastInsertRowid: rows[0] ? rows[0].id : undefined };
+      },
+    };
+  }
+
+  async function exec(sql) {
+    await executor.query(sql);
+  }
+
+  return { prepare, exec };
 }
 
-async function exec(sql) {
-  await pool.query(sql);
-}
+const { prepare, exec } = makeQueryable(pool);
 
+// fn erhält als erstes Argument ein auf die transaktionale Connection
+// gebundenes { prepare, exec } — darüber müssen alle Queries innerhalb der
+// Transaktion laufen, sonst landen sie (über den Pool) auf einer anderen
+// Connection als BEGIN/COMMIT und die Atomarität geht verloren.
 function transaction(fn) {
   return async (...args) => {
     const client = await pool.connect();
+    const tx = makeQueryable(client);
     try {
       await client.query('BEGIN');
-      const result = await fn(...args);
+      const result = await fn(tx, ...args);
       await client.query('COMMIT');
       return result;
     } catch (err) {
@@ -129,6 +151,30 @@ async function initializeDatabase() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS visit_purposes (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      active BOOLEAN DEFAULT true
+    );
+
+    -- Einzelne per SSO zum Login berechtigte Benutzer (ersetzt die frühere
+    -- domainweite Allowlist) — Rolle wird bei jedem SSO-Login synchronisiert.
+    CREATE TABLE IF NOT EXISTS sso_allowed_users (
+      email TEXT PRIMARY KEY,
+      role TEXT NOT NULL DEFAULT 'user',
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_visits_visitor_id ON visits(visitor_id);
+    CREATE INDEX IF NOT EXISTS idx_visits_host_id ON visits(host_id);
+    CREATE INDEX IF NOT EXISTS idx_visits_status ON visits(status);
+    CREATE INDEX IF NOT EXISTS idx_visits_checked_in_at ON visits(checked_in_at);
+    CREATE INDEX IF NOT EXISTS idx_visits_checked_out_at ON visits(checked_out_at);
+    CREATE INDEX IF NOT EXISTS idx_hosts_email_lower ON hosts(LOWER(email));
+    CREATE INDEX IF NOT EXISTS idx_preregistrations_expected_date ON preregistrations(expected_date);
+    CREATE INDEX IF NOT EXISTS idx_preregistrations_status ON preregistrations(status);
   `);
 
   // Default system settings
@@ -137,6 +183,10 @@ async function initializeDatabase() {
     auto_checkout_time: '20:00',
     data_retention_days: '365',
     notify_host_on_arrival: 'true',
+    privacy_policy_enabled: 'true',
+    privacy_policy_text: '',
+    entra_sync_enabled: 'false',
+    entra_sync_filter: '',
   };
   const insertSetting = prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING');
   for (const [k, v] of Object.entries(settingDefaults)) {
@@ -148,16 +198,27 @@ async function initializeDatabase() {
   await exec('DROP TABLE IF EXISTS parking_spots');
   await exec('DROP TABLE IF EXISTS visit_documents');
   await exec('DROP TABLE IF EXISTS user_locations');
-  await exec('DROP TABLE IF EXISTS visit_purposes');
   await exec('DROP TABLE IF EXISTS locations');
 
   await exec('ALTER TABLE visits ADD COLUMN IF NOT EXISTS checked_in_by INTEGER REFERENCES users(id)');
   await exec('ALTER TABLE visits ADD COLUMN IF NOT EXISTS privacy_accepted BOOLEAN DEFAULT false');
+  await exec('ALTER TABLE visits ADD COLUMN IF NOT EXISTS purpose_id INTEGER REFERENCES visit_purposes(id)');
   await exec('ALTER TABLE hosts ADD COLUMN IF NOT EXISTS ad_object_id TEXT');
   await exec('ALTER TABLE preregistrations ALTER COLUMN expected_date DROP NOT NULL');
+  await exec('CREATE INDEX IF NOT EXISTS idx_hosts_ad_object_id ON hosts(ad_object_id)');
 
   await exec("UPDATE users SET role = 'admin' WHERE role IN ('superadmin', 'admin')");
   await exec("UPDATE users SET role = 'user' WHERE role = 'receptionist'");
+
+  // Default-Besuchszwecke, falls noch keine angelegt
+  const purposeCount = await prepare('SELECT COUNT(*) as c FROM visit_purposes').get();
+  if (parseInt(purposeCount.c, 10) === 0) {
+    const insertPurpose = prepare('INSERT INTO visit_purposes (name, sort_order) VALUES (?, ?) ON CONFLICT (name) DO NOTHING');
+    const defaults = ['Besprechung', 'Lieferung', 'Interview', 'Wartung', 'Sonstiges'];
+    for (let i = 0; i < defaults.length; i++) {
+      await insertPurpose.run(defaults[i], i);
+    }
+  }
 
   // Ensure initial admin exists
   const userCount = await prepare('SELECT COUNT(*) as c FROM users').get();

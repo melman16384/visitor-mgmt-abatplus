@@ -20,7 +20,7 @@ export default function AuthCallback() {
       sso_token_failed: 'Token-Fehler. Bitte erneut versuchen.',
       no_email: 'Kein E-Mail-Konto gefunden.',
       invalid_state: 'Sicherheitsprüfung fehlgeschlagen. Bitte erneut versuchen.',
-      domain_not_allowed: 'Diese E-Mail-Domain ist nicht zugelassen.',
+      not_allowed: 'Diese E-Mail-Adresse ist nicht für die Anmeldung freigeschaltet.',
     };
 
     if (code) {

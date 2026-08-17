@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings2, Users, Key, Plus, Trash2, Pencil, X, Eye, EyeOff, DatabaseZap, UserCheck, ShieldCheck, ShieldAlert, ShieldQuestion, Cloud, Copy, Check } from 'lucide-react';
+import { Settings2, Users, Key, Plus, Trash2, Pencil, X, Eye, EyeOff, DatabaseZap, UserCheck, ShieldCheck, ShieldAlert, ShieldQuestion, Cloud, Copy, Check, ClipboardList, ArrowUp, ArrowDown, RefreshCw, ListChecks } from 'lucide-react';
 import api from '../api/client';
 import { showToast } from '../components/Layout';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +19,21 @@ function Modal({ title, onClose, children }) {
 }
 
 const inp = 'w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-abat-blau focus:ring-1 focus:ring-abat-blau';
+
+function Toggle({ value, onChange }) {
+  return (
+    <div
+      onClick={() => onChange(v => !v)}
+      role="switch"
+      aria-checked={value}
+      tabIndex={0}
+      onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && onChange(v => !v)}
+      className={`relative flex-shrink-0 w-12 h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${value ? 'bg-abat-blau' : 'bg-gray-300'}`}
+    >
+      <span className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ease-in-out ${value ? 'translate-x-6' : 'translate-x-0.5'}`} />
+    </div>
+  );
+}
 
 // ---- Auto-Checkout Tab ----
 function AutoCheckoutTab() {
@@ -40,7 +55,7 @@ function AutoCheckoutTab() {
     setSaving(true);
     try {
       await api.put('/settings', {
-        auto_checkout_enabled: enabled ? '1' : '0',
+        auto_checkout_enabled: enabled ? 'true' : 'false',
         auto_checkout_time: time,
         notify_host_on_arrival: notifyHost ? 'true' : 'false',
       });
@@ -51,19 +66,6 @@ function AutoCheckoutTab() {
       setSaving(false);
     }
   };
-
-  const Toggle = ({ value, onChange }) => (
-    <div
-      onClick={() => onChange(v => !v)}
-      role="switch"
-      aria-checked={value}
-      tabIndex={0}
-      onKeyDown={e => (e.key === ' ' || e.key === 'Enter') && onChange(v => !v)}
-      className={`relative flex-shrink-0 w-12 h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${value ? 'bg-abat-blau' : 'bg-gray-300'}`}
-    >
-      <span className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ease-in-out ${value ? 'translate-x-6' : 'translate-x-0.5'}`} />
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -357,11 +359,117 @@ function UsersTab() {
   );
 }
 
-// ---- Data Retention Tab ----
+// ---- Besuchszwecke Tab ----
+function PurposesTab() {
+  const [purposes, setPurposes] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = () => api.get('/visit-purposes').then(r => setPurposes(r.data)).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (editItem) {
+        await api.put(`/visit-purposes/${editItem.id}`, { name });
+        showToast('Besuchszweck aktualisiert');
+      } else {
+        await api.post('/visit-purposes', { name });
+        showToast('Besuchszweck gespeichert');
+      }
+      setShowForm(false);
+      setEditItem(null);
+      setName('');
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async (id) => {
+    if (!confirm('Besuchszweck deaktivieren?')) return;
+    try { await api.delete(`/visit-purposes/${id}`); load(); showToast('Deaktiviert'); }
+    catch { showToast('Fehler', 'error'); }
+  };
+
+  const move = async (index, dir) => {
+    const next = [...purposes];
+    const swapIndex = index + dir;
+    if (swapIndex < 0 || swapIndex >= next.length) return;
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+    setPurposes(next);
+    try {
+      await api.put('/visit-purposes/reorder', {
+        order: next.map((p, i) => ({ id: p.id, sort_order: i })),
+      });
+    } catch {
+      showToast('Fehler beim Sortieren', 'error');
+      load();
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <button onClick={() => { setName(''); setEditItem(null); setShowForm(true); }}
+          className="flex items-center gap-2 bg-abat-blau text-white px-4 py-2 rounded-xl text-sm font-semibold">
+          <Plus size={16} /> Besuchszweck hinzufügen
+        </button>
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {purposes.length === 0 ? (
+          <p className="py-10 text-center text-gray-400 text-sm">Noch keine Besuchszwecke angelegt</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {purposes.map((p, i) => (
+              <div key={p.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50/50">
+                <span className="font-medium text-gray-800 text-sm">{p.name}</span>
+                <div className="flex gap-1">
+                  <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1.5 text-gray-400 hover:text-abat-blau hover:bg-abat-blau/10 rounded-lg disabled:opacity-30"><ArrowUp size={14} /></button>
+                  <button onClick={() => move(i, 1)} disabled={i === purposes.length - 1} className="p-1.5 text-gray-400 hover:text-abat-blau hover:bg-abat-blau/10 rounded-lg disabled:opacity-30"><ArrowDown size={14} /></button>
+                  <button onClick={() => { setName(p.name); setEditItem(p); setShowForm(true); }} className="p-1.5 text-gray-400 hover:text-abat-blau hover:bg-abat-blau/10 rounded-lg"><Pencil size={14} /></button>
+                  <button onClick={() => del(p.id)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showForm && (
+        <Modal title={editItem ? 'Besuchszweck bearbeiten' : 'Besuchszweck hinzufügen'} onClose={() => setShowForm(false)}>
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Bezeichnung *</label>
+              <input value={name} onChange={e => setName(e.target.value)} required className={inp} placeholder="z.B. Besprechung" autoFocus />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm">Abbrechen</button>
+              <button type="submit" disabled={saving} className="flex-1 px-4 py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+                {saving ? 'Speichern…' : (editItem ? 'Speichern' : 'Erstellen')}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ---- Datenschutz Tab (Aufbewahrung + Datenschutztext) ----
 function DataRetentionTab() {
   const [days, setDays] = useState('365');
   const [custom, setCustom] = useState(false);
+  const [privacyEnabled, setPrivacyEnabled] = useState(true);
+  const [privacyText, setPrivacyText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
 
   useEffect(() => {
     api.get('/settings').then(r => {
@@ -374,6 +482,8 @@ function DataRetentionTab() {
         setDays(val);
         setCustom(true);
       }
+      setPrivacyEnabled(r.data.privacy_policy_enabled !== 'false' && r.data.privacy_policy_enabled !== '0');
+      setPrivacyText(r.data.privacy_policy_text || '');
     }).catch(() => {});
   }, []);
 
@@ -382,12 +492,30 @@ function DataRetentionTab() {
     if (isNaN(val) || val < 0) { showToast('Ungültiger Wert', 'error'); return; }
     setSaving(true);
     try {
-      await api.put('/settings', { data_retention_days: String(val) });
+      await api.put('/settings', {
+        data_retention_days: String(val),
+        privacy_policy_enabled: privacyEnabled ? 'true' : 'false',
+        privacy_policy_text: privacyText.trim(),
+      });
       showToast('Einstellungen gespeichert');
     } catch {
       showToast('Fehler beim Speichern', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const cleanup = async () => {
+    if (!confirm('Datenschutz-Bereinigung jetzt ausführen? Abgelaufene Besuchsdaten werden dauerhaft gelöscht.')) return;
+    setCleaning(true);
+    try {
+      const res = await api.post('/settings/gdpr/cleanup');
+      const { visits = 0, visitors = 0, prereg = 0 } = res.data || {};
+      showToast(`Bereinigung abgeschlossen: ${visits} Besuche, ${visitors} Besucher, ${prereg} Vorregistrierungen gelöscht`);
+    } catch {
+      showToast('Bereinigung fehlgeschlagen', 'error');
+    } finally {
+      setCleaning(false);
     }
   };
 
@@ -452,17 +580,112 @@ function DataRetentionTab() {
           <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Datenlöschung deaktiviert — Besuchsdaten werden unbegrenzt gespeichert.</p>
         )}
 
-        <button onClick={save} disabled={saving} className="w-full py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors duration-150">
-          {saving ? 'Speichern…' : 'Einstellungen speichern'}
-        </button>
+        <div className="flex justify-end">
+          <button onClick={cleanup} disabled={cleaning} className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-xl text-xs font-semibold disabled:opacity-50">
+            {cleaning ? 'Bereinige…' : 'Jetzt bereinigen'}
+          </button>
+        </div>
       </div>
+
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-800">Datenschutzerklärung am Kiosk</h3>
+          <p className="text-xs text-gray-400 mt-1">Steuert den Hinweistext im Check-in-Formular. Bleibt das Feld leer, wird der Standard-Link zur Datenschutzerklärung angezeigt.</p>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="font-medium text-gray-700">Eigenen Datenschutztext anzeigen</p>
+          <Toggle value={privacyEnabled} onChange={setPrivacyEnabled} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Datenschutztext</label>
+          <textarea value={privacyText} onChange={e => setPrivacyText(e.target.value)} rows={4} className={`${inp} resize-none`}
+            placeholder="Der Besucher wurde auf die Datenschutzerklärung hingewiesen…" disabled={!privacyEnabled} />
+        </div>
+      </div>
+
+      <button onClick={save} disabled={saving} className="w-full py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors duration-150">
+        {saving ? 'Speichern…' : 'Einstellungen speichern'}
+      </button>
     </div>
   );
 }
 
 // ---- Microsoft SSO Tab ----
+// ---- Zugriffsliste: einzelne per SSO zum Login berechtigte Benutzer ----
+function SsoAllowedUsersSection() {
+  const [items, setItems] = useState([]);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('user');
+  const [saving, setSaving] = useState(false);
+
+  const load = () => api.get('/settings/sso-allowed-users').then(r => setItems(r.data)).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSaving(true);
+    try {
+      await api.post('/settings/sso-allowed-users', { email: email.trim(), role });
+      setEmail('');
+      setRole('user');
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (e) => {
+    if (!confirm(`${e} von der Zugriffsliste entfernen?`)) return;
+    try { await api.delete(`/settings/sso-allowed-users/${encodeURIComponent(e)}`); load(); }
+    catch { showToast('Fehler', 'error'); }
+  };
+
+  return (
+    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+      <div>
+        <h3 className="font-semibold text-gray-800 flex items-center gap-2"><ListChecks size={16} /> Zugriffsliste</h3>
+        <p className="text-xs text-gray-400 mt-1">Nur hier gelistete E-Mail-Adressen dürfen sich per Microsoft SSO anmelden. Die Rolle wird bei jedem Login synchronisiert.</p>
+      </div>
+
+      <form onSubmit={add} className="flex flex-wrap gap-2 items-end">
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-xs font-semibold text-gray-700 mb-1">E-Mail</label>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className={inp} placeholder="name@firma.de" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1">Rolle</label>
+          <select value={role} onChange={e => setRole(e.target.value)} className={`${inp} bg-white`}>
+            <option value="user">Benutzer</option>
+            <option value="admin">Administrator</option>
+          </select>
+        </div>
+        <button type="submit" disabled={saving} className="px-4 py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5">
+          <Plus size={14} /> Hinzufügen
+        </button>
+      </form>
+
+      <div className="divide-y divide-gray-50 border border-gray-100 rounded-xl overflow-hidden">
+        {items.length === 0 ? (
+          <p className="py-6 text-center text-gray-400 text-sm">Noch keine Benutzer in der Zugriffsliste</p>
+        ) : items.map(it => (
+          <div key={it.email} className="flex items-center justify-between px-4 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-gray-800">{it.email}</p>
+              <span className={`text-xs font-semibold ${it.role === 'admin' ? 'text-abat-blau' : 'text-gray-400'}`}>{it.role === 'admin' ? 'Administrator' : 'Benutzer'}</span>
+            </div>
+            <button onClick={() => remove(it.email)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SsoTab() {
-  const [form, setForm] = useState({ tenantId: '', clientId: '', clientSecret: '', allowedDomains: '', notifyFromEmail: '' });
+  const [form, setForm] = useState({ tenantId: '', clientId: '', clientSecret: '', notifyFromEmail: '' });
   const [secretSet, setSecretSet] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -475,7 +698,6 @@ function SsoTab() {
       tenantId: s.sso_tenant_id || '',
       clientId: s.sso_client_id || '',
       clientSecret: '',
-      allowedDomains: s.sso_allowed_domains || '',
       notifyFromEmail: s.notify_from_email || '',
     });
     setSecretSet(!!s.sso_client_secret_set);
@@ -491,7 +713,6 @@ function SsoTab() {
         sso_tenant_id: form.tenantId.trim(),
         sso_client_id: form.clientId.trim(),
         sso_client_secret: form.clientSecret,
-        sso_allowed_domains: form.allowedDomains.trim(),
         notify_from_email: form.notifyFromEmail.trim(),
       });
       showToast('SSO-Einstellungen gespeichert');
@@ -542,11 +763,6 @@ function SsoTab() {
           />
         </div>
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">Erlaubte E-Mail-Domains</label>
-          <input value={form.allowedDomains} onChange={e => setForm(f => ({ ...f, allowedDomains: e.target.value }))} className={inp} placeholder="abatplus.de, abat.de" />
-          <p className="text-xs text-gray-400 mt-1">Kommagetrennt. Leer = keine Einschränkung für die automatische Konto-Anlage beim ersten SSO-Login.</p>
-        </div>
-        <div>
           <label className="block text-sm font-semibold text-gray-700 mb-1">Absender-Postfach für Gastgeber-Mails</label>
           <input type="email" value={form.notifyFromEmail} onChange={e => setForm(f => ({ ...f, notifyFromEmail: e.target.value }))} className={inp} placeholder="besucher@firma.de" />
         </div>
@@ -555,6 +771,8 @@ function SsoTab() {
           {saving ? 'Speichern…' : 'Einstellungen speichern'}
         </button>
       </div>
+
+      <SsoAllowedUsersSection />
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
         <h4 className="text-sm font-semibold text-blue-900">Azure-Einrichtung</h4>
@@ -576,49 +794,182 @@ function SsoTab() {
   );
 }
 
+// ---- Gastgeber-Sync Tab (geplanter Entra-ID-Sync) ----
+function EntraSyncTab() {
+  const [enabled, setEnabled] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [status, setStatus] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const load = () => {
+    api.get('/entra-sync/config').then(r => {
+      setEnabled(r.data.enabled);
+      setFilter(r.data.filter || '');
+    }).catch(() => {});
+    api.get('/entra-sync/status').then(r => setStatus(r.data)).catch(() => {});
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put('/entra-sync/config', { enabled, filter: filter.trim() });
+      showToast('Sync-Einstellungen gespeichert');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.post('/entra-sync/sync');
+      const { created = 0, updated = 0, deactivated = 0 } = res.data || {};
+      showToast(`Sync abgeschlossen: ${created} neu, ${updated} aktualisiert, ${deactivated} deaktiviert`);
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Sync fehlgeschlagen', 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+        <div>
+          <h3 className="font-semibold text-gray-800">Gastgeber-Sync</h3>
+          <p className="text-xs text-gray-400 mt-1">Zieht täglich alle Benutzer aus dem Microsoft-Verzeichnis als Gastgeber. Nutzt dieselbe App-Registrierung wie die Microsoft SSO (Tab „Microsoft SSO"). Entfernte Benutzer werden als Gastgeber deaktiviert, nicht gelöscht.</p>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <p className="font-medium text-gray-700">Geplanten Sync aktivieren</p>
+          <Toggle value={enabled} onChange={setEnabled} />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Graph-Filter (optional)</label>
+          <input value={filter} onChange={e => setFilter(e.target.value)} className={inp} placeholder="z.B. accountEnabled eq true" />
+          <p className="text-xs text-gray-400 mt-1">OData-$filter für Microsoft Graph /users. Leer = alle Benutzer des Mandanten.</p>
+        </div>
+        <button onClick={save} disabled={saving} className="w-full py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+          {saving ? 'Speichern…' : 'Einstellungen speichern'}
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-800">Status</h3>
+          <button onClick={syncNow} disabled={syncing} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-xs font-medium disabled:opacity-50">
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {syncing ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
+          </button>
+        </div>
+        {status?.lastSyncAt ? (
+          <div className="text-sm text-gray-600 space-y-1">
+            <p>Letzter Sync: <span className="font-medium text-gray-800">{new Date(status.lastSyncAt).toLocaleString('de-DE')}</span></p>
+            {status.lastResult && (
+              <p className="text-xs text-gray-400">{status.lastResult.created} neu · {status.lastResult.updated} aktualisiert · {status.lastResult.deactivated} deaktiviert</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">Noch kein Sync ausgeführt</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---- Main Settings ----
+const SETTINGS_GROUPS = [
+  {
+    key: 'operations', label: 'Betrieb',
+    tabs: [
+      { key: 'checkout', label: 'Auto-Checkout', icon: Settings2, adminOnly: true },
+      { key: 'purposes', label: 'Besuchszwecke', icon: ClipboardList, adminOnly: true },
+    ],
+  },
+  {
+    key: 'access', label: 'Zugriff & Benutzer',
+    tabs: [
+      { key: 'users', label: 'Benutzer', icon: Users, adminOnly: true },
+      { key: 'hosts', label: 'Gastgeber', icon: UserCheck, adminOnly: true },
+      { key: 'entraSync', label: 'Gastgeber-Sync', icon: RefreshCw, adminOnly: true },
+      { key: 'sso', label: 'Microsoft SSO', icon: Cloud, adminOnly: true },
+    ],
+  },
+  {
+    key: 'system', label: 'System',
+    tabs: [
+      { key: 'retention', label: 'Datenschutz', icon: DatabaseZap, adminOnly: true },
+    ],
+  },
+  {
+    key: 'account', label: 'Konto',
+    tabs: [
+      { key: 'password', label: 'Passwort', icon: Key, adminOnly: false },
+    ],
+  },
+];
+
+const TAB_CONTENT = {
+  checkout: AutoCheckoutTab,
+  purposes: PurposesTab,
+  retention: DataRetentionTab,
+  password: PasswordTab,
+  users: UsersTab,
+  hosts: HostsTab,
+  entraSync: EntraSyncTab,
+  sso: SsoTab,
+};
+
 export default function Settings() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [tab, setTab] = useState('password');
 
-  const tabs = [
-    ...(isAdmin ? [{ key: 'checkout', label: 'Auto-Checkout', icon: Settings2 }] : []),
-    ...(isAdmin ? [{ key: 'retention', label: 'Datenspeicherung', icon: DatabaseZap }] : []),
-    { key: 'password', label: 'Passwort', icon: Key },
-    ...(isAdmin ? [{ key: 'users', label: 'Benutzer', icon: Users }] : []),
-    ...(isAdmin ? [{ key: 'hosts', label: 'Gastgeber', icon: UserCheck }] : []),
-    ...(isAdmin ? [{ key: 'sso', label: 'Microsoft SSO', icon: Cloud }] : []),
-  ];
+  const visibleGroups = SETTINGS_GROUPS
+    .map(g => ({ ...g, tabs: g.tabs.filter(t => !t.adminOnly || isAdmin) }))
+    .filter(g => g.tabs.length > 0);
+
+  const [tab, setTab] = useState(isAdmin ? 'checkout' : 'password');
 
   useEffect(() => {
-    if (isAdmin) setTab('checkout');
+    setTab(isAdmin ? 'checkout' : 'password');
   }, [isAdmin]);
+
+  const ActiveContent = TAB_CONTENT[tab] || PasswordTab;
 
   return (
     <div className="p-4 md:p-6 space-y-4">
       <h1 className="text-xl md:text-2xl font-bold text-gray-900">Einstellungen</h1>
 
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit flex-wrap">
-        {tabs.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors duration-150 ease-in-out ${tab === key ? 'bg-white text-abat-blau shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col md:flex-row gap-6 items-start">
+        {/* Gruppierte Navigation */}
+        <nav className="w-full md:w-56 flex-shrink-0 space-y-5">
+          {visibleGroups.map(group => (
+            <div key={group.key}>
+              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">{group.label}</p>
+              <div className="space-y-0.5">
+                {group.tabs.map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setTab(key)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left
+                      ${tab === key ? 'bg-abat-blau/10 text-abat-blau' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                  >
+                    <Icon size={16} className="flex-shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
 
-      <div className="max-w-2xl">
-        {tab === 'checkout' && isAdmin && <AutoCheckoutTab />}
-        {tab === 'retention' && isAdmin && <DataRetentionTab />}
-        {tab === 'password' && <PasswordTab />}
-        {tab === 'users' && isAdmin && <UsersTab />}
-        {tab === 'hosts' && isAdmin && <HostsTab />}
-        {tab === 'sso' && isAdmin && <SsoTab />}
+        {/* Tab-Inhalt */}
+        <div className="flex-1 min-w-0 max-w-2xl">
+          <ActiveContent />
+        </div>
       </div>
     </div>
   );

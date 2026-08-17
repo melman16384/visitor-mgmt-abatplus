@@ -77,12 +77,13 @@ router.get('/', authenticate, async (req, res) => {
       SELECT vi.id, vi.first_name, vi.last_name, vi.company, vi.email,
         v.id as visit_id, v.status as visit_status, v.checked_in_at, v.checked_out_at, v.privacy_accepted, v.notes,
         h.name as host_name, h.id as host_id,
-        u.name as checked_in_by_name
+        u.name as checked_in_by_name, p.name as purpose_name
       FROM visitors vi
       INNER JOIN visits v ON v.visitor_id = vi.id AND v.status = 'completed' AND date(v.checked_out_at) = ?
         AND v.id = (SELECT MAX(v2.id) FROM visits v2 WHERE v2.visitor_id = vi.id AND v2.status = 'completed')
       LEFT JOIN hosts h ON v.host_id = h.id
       LEFT JOIN users u ON v.checked_in_by = u.id
+      LEFT JOIN visit_purposes p ON v.purpose_id = p.id
       ${searchWhere}
       ORDER BY v.checked_out_at DESC
       LIMIT ? OFFSET ?
@@ -112,11 +113,12 @@ router.get('/', authenticate, async (req, res) => {
     SELECT vi.id, vi.first_name, vi.last_name, vi.company, vi.email,
       v.id as visit_id, v.status as visit_status, v.checked_in_at, v.checked_out_at, v.privacy_accepted, v.notes,
       h.name as host_name, h.id as host_id,
-      u.name as checked_in_by_name
+      u.name as checked_in_by_name, p.name as purpose_name
     FROM visitors vi
     ${visitJoin}
     LEFT JOIN hosts h ON v.host_id = h.id
     LEFT JOIN users u ON v.checked_in_by = u.id
+    LEFT JOIN visit_purposes p ON v.purpose_id = p.id
     ${whereClause}
     ORDER BY v.checked_in_at DESC
     LIMIT ? OFFSET ?
@@ -145,7 +147,7 @@ router.get('/active', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   const {
     first_name, last_name, company, notes, privacy_accepted, checked_in_at,
-    host_id, host_name, host_email, host_ad_object_id,
+    host_id, host_name, host_email, host_ad_object_id, purpose_id,
   } = req.body;
   if (!first_name || !last_name) {
     return res.status(400).json({ error: 'Vor- und Nachname erforderlich' });
@@ -175,16 +177,17 @@ router.post('/', authenticate, async (req, res) => {
   const checkinTime = checked_in_at ? new Date(checked_in_at) : new Date();
 
   const visitResult = await db.prepare(`
-    INSERT INTO visits (visitor_id, host_id, checked_in_at, notes, status, privacy_accepted, checked_in_by)
-    VALUES (?, ?, ?, ?, 'active', ?, ?)
+    INSERT INTO visits (visitor_id, host_id, checked_in_at, notes, status, privacy_accepted, checked_in_by, purpose_id)
+    VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
   `).run(visitor.id, resolvedHostId, checkinTime.toISOString(), notes ? notes.trim() : null,
-    !!privacy_accepted, req.user.id);
+    !!privacy_accepted, req.user.id, purpose_id || null);
 
   const visit = await db.prepare(`
-    SELECT v.*, h.name as host_name, h.email as host_email, u.name as checked_in_by_name
+    SELECT v.*, h.name as host_name, h.email as host_email, u.name as checked_in_by_name, p.name as purpose_name
     FROM visits v
     LEFT JOIN hosts h ON v.host_id = h.id
     LEFT JOIN users u ON v.checked_in_by = u.id
+    LEFT JOIN visit_purposes p ON v.purpose_id = p.id
     WHERE v.id = ?
   `).get(visitResult.lastInsertRowid);
 
@@ -230,9 +233,9 @@ router.delete('/:id', authenticate, requireRole(['admin']), async (req, res) => 
   const activeVisit = await db.prepare("SELECT id FROM visits WHERE visitor_id = ? AND status = 'active'").get(req.params.id);
   if (activeVisit) return res.status(409).json({ error: 'Besucher ist noch eingecheckt' });
 
-  await db.transaction(async () => {
-    await db.prepare('DELETE FROM visits WHERE visitor_id = ?').run(req.params.id);
-    await db.prepare('DELETE FROM visitors WHERE id = ?').run(req.params.id);
+  await db.transaction(async (tx) => {
+    await tx.prepare('DELETE FROM visits WHERE visitor_id = ?').run(req.params.id);
+    await tx.prepare('DELETE FROM visitors WHERE id = ?').run(req.params.id);
   })();
 
   try { log('VISITOR_GELÖSCHT', req.user.name, `${visitor.first_name} ${visitor.last_name}`); } catch {}

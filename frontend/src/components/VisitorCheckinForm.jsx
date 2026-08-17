@@ -8,11 +8,12 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
   const now = new Date();
   const [form, setForm] = useState({
     first_name: '', last_name: '', company: '',
-    notes: '', privacy_accepted: false,
+    notes: '', privacy_accepted: false, purpose_id: '',
     checkin_date: format(now, 'yyyy-MM-dd'),
     checkin_time: format(now, 'HH:mm'),
   });
   const [host, setHost] = useState(null);
+  const [purposes, setPurposes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -20,6 +21,15 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
     // prevent body scroll on mobile
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  useEffect(() => {
+    api.get('/visit-purposes').then(r => setPurposes(r.data)).catch(() => {});
+  }, []);
+
+  const [privacyPolicy, setPrivacyPolicy] = useState(null);
+  useEffect(() => {
+    api.get('/settings/privacy-policy').then(r => setPrivacyPolicy(r.data)).catch(() => {});
   }, []);
 
   const handleChange = (e) => {
@@ -39,6 +49,7 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
         last_name: form.last_name,
         company: form.company,
         notes: form.notes,
+        purpose_id: form.purpose_id || null,
         privacy_accepted: form.privacy_accepted,
         checked_in_at: new Date(`${form.checkin_date}T${form.checkin_time}`).toISOString(),
         host_name: host.name,
@@ -119,6 +130,16 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
             </div>
           </div>
 
+          {purposes.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Besuchszweck</label>
+              <select name="purpose_id" value={form.purpose_id} onChange={handleChange} className={`${inp} bg-white`}>
+                <option value="">– Bitte wählen –</option>
+                {purposes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notizen</label>
             <textarea name="notes" value={form.notes} onChange={handleChange} rows={2} className={`${inp} resize-none`} placeholder="Optional — Grund des Besuchs, Besonderheiten…" />
@@ -130,17 +151,24 @@ export default function VisitorCheckinForm({ onSuccess, onClose }) {
               className="mt-0.5 w-5 h-5 rounded border-gray-300 text-abat-blau focus:ring-abat-blau flex-shrink-0 cursor-pointer"
             />
             <label htmlFor="privacy_accepted" className="text-sm text-gray-700 leading-snug cursor-pointer">
-              Der Besucher wurde auf die{' '}
-              <a
-                href="https://www.abat.de/datenschutz"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="underline font-semibold text-gray-900 hover:text-abat-blau"
-              >
-                Datenschutzerklärung
-              </a>{' '}
-              hingewiesen. *
+              {privacyPolicy?.enabled && privacyPolicy.text ? (
+                privacyPolicy.text
+              ) : (
+                <>
+                  Der Besucher wurde auf die{' '}
+                  <a
+                    href="https://www.abat.de/datenschutz"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="underline font-semibold text-gray-900 hover:text-abat-blau"
+                  >
+                    Datenschutzerklärung
+                  </a>{' '}
+                  hingewiesen.
+                </>
+              )}
+              {' '}*
             </label>
           </div>
         </form>

@@ -4,7 +4,7 @@ const msal = require('@azure/msal-node');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const { findOrCreateHostByEmail } = require('../services/hosts-helper');
-const { getSsoConfig, getAllowedDomains } = require('../services/sso-config');
+const { getSsoConfig, getAllowedUser } = require('../services/sso-config');
 
 const router = express.Router();
 if (!process.env.JWT_SECRET) {
@@ -100,23 +100,23 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${APP_URL}/login?error=no_email`);
     }
 
-    // Existing user → login
+    // Zugriffsliste: nur explizit freigeschaltete E-Mails dürfen sich per SSO anmelden.
+    // Wird bei JEDEM Login geprüft (nicht nur bei Erstanlage), Rolle wird synchronisiert.
+    const allowedEntry = await getAllowedUser(msEmail);
+    if (!allowedEntry) {
+      console.error(`[MS SSO] Login abgelehnt, nicht auf Zugriffsliste: ${msEmail}`);
+      return res.redirect(`${APP_URL}/login?error=not_allowed`);
+    }
+
     let user = await db.prepare('SELECT * FROM users WHERE LOWER(email) = ? AND active = true').get(msEmail);
 
     if (!user) {
-      const emailDomain = msEmail.split('@')[1];
-      const allowedDomains = await getAllowedDomains();
-      if (allowedDomains.length > 0 && !allowedDomains.includes(emailDomain)) {
-        console.error(`[MS SSO] Auto-Provisionierung abgelehnt, Domain nicht erlaubt: ${msEmail}`);
-        return res.redirect(`${APP_URL}/login?error=domain_not_allowed`);
-      }
-
-      // First login → create user + host
+      // Erstlogin → Benutzer + Gastgeber-Eintrag anlegen, Rolle aus Zugriffsliste
       const insertUser = db.prepare(`
         INSERT INTO users (name, email, password_hash, role, active)
-        VALUES (?, ?, '', 'user', true)
+        VALUES (?, ?, '', ?, true)
       `);
-      const userResult = await insertUser.run(msName, msEmail);
+      const userResult = await insertUser.run(msName, msEmail, allowedEntry.role);
       const newUserId = userResult.lastInsertRowid;
 
       // Auto-create host entry
@@ -124,6 +124,10 @@ router.get('/callback', async (req, res) => {
 
       user = await db.prepare('SELECT * FROM users WHERE id = ?').get(newUserId);
       console.log(`[MS SSO] Neuer Benutzer erstellt: ${msEmail}`);
+    } else if (user.role !== allowedEntry.role) {
+      // Rolle bei jedem Login mit der Zugriffsliste synchronisieren
+      await db.prepare('UPDATE users SET role = ? WHERE id = ?').run(allowedEntry.role, user.id);
+      user.role = allowedEntry.role;
     }
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '8h' });

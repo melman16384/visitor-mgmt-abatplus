@@ -124,4 +124,4 @@ async function sendMail(to, subject, body) {
   }
 }
 
-module.exports = { isConfigured, searchUsers, checkUser, sendMail, DirectoryNotConfiguredError };
+module.exports = { isConfigured, searchUsers, checkUser, sendMail, getAppToken, DirectoryNotConfiguredError };

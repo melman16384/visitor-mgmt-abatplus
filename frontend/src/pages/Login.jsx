@@ -26,7 +26,17 @@ export default function Login() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  const ssoError = params.get('error');
+  const SSO_ERROR_MESSAGES = {
+    sso_failed: 'SSO-Anmeldung fehlgeschlagen.',
+    sso_not_configured: 'Microsoft SSO ist nicht konfiguriert.',
+    sso_cancelled: 'Anmeldung abgebrochen.',
+    sso_token_failed: 'Token-Fehler. Bitte erneut versuchen.',
+    no_email: 'Kein E-Mail-Konto gefunden.',
+    invalid_state: 'Sicherheitsprüfung fehlgeschlagen. Bitte erneut versuchen.',
+    not_allowed: 'Diese E-Mail-Adresse ist nicht für die Anmeldung freigeschaltet.',
+  };
+  const ssoErrorCode = params.get('error');
+  const ssoError = ssoErrorCode ? (SSO_ERROR_MESSAGES[ssoErrorCode] || 'Anmeldung fehlgeschlagen.') : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();

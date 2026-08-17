@@ -43,6 +43,8 @@ app.use('/api/hosts', require('./routes/hosts'));
 app.use('/api/preregistrations', require('./routes/preregistrations'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/visit-purposes', require('./routes/visit-purposes'));
+app.use('/api/entra-sync', require('./routes/entra-sync'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -59,18 +61,37 @@ app.use((req, res) => {
 
 // Init DB + start
 const { cleanup: auditCleanup } = require('./services/audit-log');
-const { dbReady } = require('./db/database');
+const { dbReady, pool } = require('./db/database');
 auditCleanup();
 
 const { scheduleNext } = require('./services/auto-checkout');
 const { scheduleRetention } = require('./services/data-retention');
+const { scheduleEntraSync } = require('./services/entra-sync-schedule');
+
+let server;
 
 dbReady.then(() => {
-  app.listen(PORT, '127.0.0.1', () => {
+  server = app.listen(PORT, '127.0.0.1', () => {
     console.log(`✓ Besucherverwaltung Backend läuft auf Port ${PORT}`);
     scheduleNext();
     scheduleRetention();
+    scheduleEntraSync();
   });
 });
+
+// Laufende Requests zuende bringen und DB-Pool sauber schließen, statt
+// bei pm2 restart/deploy mitten in einer Transaktion gekillt zu werden.
+function shutdown(signal) {
+  console.log(`[shutdown] ${signal} empfangen, fahre herunter…`);
+  if (!server) return process.exit(0);
+  server.close(async () => {
+    try { await pool.end(); } catch (err) { console.error('[shutdown] Fehler beim Schließen des Pools:', err.message); }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 module.exports = app;

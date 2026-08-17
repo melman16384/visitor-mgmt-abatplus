@@ -19,13 +19,15 @@ async function getSsoConfig() {
   return { tenantId, clientId, clientSecret };
 }
 
-async function getAllowedDomains() {
-  const raw = await getSetting('sso_allowed_domains', process.env.SSO_ALLOWED_DOMAINS);
-  return raw.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
-}
-
 async function getNotifyFromEmail() {
   return getSetting('notify_from_email', process.env.NOTIFY_FROM_EMAIL);
 }
 
-module.exports = { getSsoConfig, getAllowedDomains, getNotifyFromEmail };
+// Zugriffsliste: nur hier gelistete E-Mails dürfen sich per SSO anmelden.
+// Ersetzt die frühere domainweite Allowlist durch eine Liste einzelner Benutzer.
+async function getAllowedUser(email) {
+  const row = await db.prepare('SELECT email, role FROM sso_allowed_users WHERE LOWER(email) = ?').get(email.toLowerCase());
+  return row || null;
+}
+
+module.exports = { getSsoConfig, getNotifyFromEmail, getAllowedUser };

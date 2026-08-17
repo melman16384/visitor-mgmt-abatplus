@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Users, LogOut, Trash2, UserPlus, CalendarPlus, LogIn, Undo2, Ban } from 'lucide-react';
+import { Search, Users, LogOut, Trash2, UserPlus, CalendarPlus, LogIn, Undo2, Ban, Pencil } from 'lucide-react';
 import { format, isToday } from 'date-fns';
 import { de } from 'date-fns/locale';
 import api from '../api/client';
@@ -145,6 +145,64 @@ function CheckinPreregDialog({ row, onClose, onSuccess }) {
   );
 }
 
+// ---- Check-in-/Check-out-Zeit nachträglich korrigieren ----
+function EditTimeDialog({ visit, onClose, onSuccess }) {
+  const [inDate, setInDate] = useState(format(new Date(visit.checked_in_at), 'yyyy-MM-dd'));
+  const [inTime, setInTime] = useState(format(new Date(visit.checked_in_at), 'HH:mm'));
+  const hadCheckout = !!visit.checked_out_at;
+  const [outDate, setOutDate] = useState(hadCheckout ? format(new Date(visit.checked_out_at), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
+  const [outTime, setOutTime] = useState(hadCheckout ? format(new Date(visit.checked_out_at), 'HH:mm') : format(new Date(), 'HH:mm'));
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      const payload = { checked_in_at: new Date(`${inDate}T${inTime}`).toISOString() };
+      if (hadCheckout) payload.checked_out_at = new Date(`${outDate}T${outTime}`).toISOString();
+      await api.put(`/visits/${visit.visit_id}/times`, payload);
+      onSuccess();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Fehler', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const dateInp = 'px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-abat-blau focus:ring-1 focus:ring-abat-blau';
+
+  return (
+    <Modal title="Zeiten korrigieren" onClose={onClose} size="sm">
+      <div className="space-y-5">
+        <p className="text-sm text-gray-600">
+          <strong className="text-gray-900">{visit.first_name} {visit.last_name}</strong>
+        </p>
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Check-in</label>
+          <div className="flex gap-2">
+            <input type="date" value={inDate} onChange={e => setInDate(e.target.value)} className={`${dateInp} flex-1`} />
+            <div className="flex-1"><TimeAdjuster value={inTime} onChange={setInTime} /></div>
+          </div>
+        </div>
+        {hadCheckout && (
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Check-out</label>
+            <div className="flex gap-2">
+              <input type="date" value={outDate} onChange={e => setOutDate(e.target.value)} className={`${dateInp} flex-1`} />
+              <div className="flex-1"><TimeAdjuster value={outTime} onChange={setOutTime} /></div>
+            </div>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Abbrechen</button>
+          <button type="button" onClick={handleSave} disabled={loading} className="flex-1 px-4 py-2.5 bg-abat-blau text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+            {loading ? 'Bitte warten…' : 'Speichern'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function Visitors() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('vorregistriert');
@@ -157,6 +215,7 @@ export default function Visitors() {
   const [showPrereg, setShowPrereg] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState(null);
   const [checkinPreregTarget, setCheckinPreregTarget] = useState(null);
+  const [editTimeTarget, setEditTimeTarget] = useState(null);
   const limit = 25;
 
   const statusParam = { vorregistriert: 'vorregistriert', active: 'active', checkedout: 'completed', cancelled: 'cancelled' }[activeTab];
@@ -301,6 +360,17 @@ export default function Visitors() {
           >
             <Undo2 size={mobile ? 16 : 13} />
             Rückgängig
+          </button>
+        )}
+        {v.visit_id && v.checked_in_at && (
+          <button
+            onClick={() => setEditTimeTarget(v)}
+            className={mobile
+              ? 'flex items-center justify-center gap-1 px-4 py-3 text-gray-500 text-xs font-medium active:bg-gray-50 transition-colors border-l border-gray-100'
+              : 'p-1.5 text-gray-300 hover:text-abat-blau hover:bg-abat-blau/10 rounded-lg transition-colors'}
+            title="Zeiten korrigieren"
+          >
+            <Pencil size={mobile ? 15 : 15} />
           </button>
         )}
         {user?.role === 'admin' && (
@@ -544,6 +614,14 @@ export default function Visitors() {
           row={checkinPreregTarget}
           onClose={() => setCheckinPreregTarget(null)}
           onSuccess={() => { setCheckinPreregTarget(null); showToast('Besucher eingecheckt'); load(); }}
+        />
+      )}
+
+      {editTimeTarget && (
+        <EditTimeDialog
+          visit={editTimeTarget}
+          onClose={() => setEditTimeTarget(null)}
+          onSuccess={() => { setEditTimeTarget(null); showToast('Zeiten aktualisiert'); load(); }}
         />
       )}
 
