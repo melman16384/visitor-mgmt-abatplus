@@ -14,9 +14,12 @@ async function authenticate(req, res, next) {
   const token = authHeader.slice(7);
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = await db.prepare('SELECT id, name, email, role FROM users WHERE id = ? AND active = true').get(payload.userId);
+    const user = await db.prepare('SELECT id, name, email, role, password_hash FROM users WHERE id = ? AND active = true').get(payload.userId);
     if (!user) return res.status(401).json({ error: 'Benutzer nicht gefunden' });
-    req.user = user;
+    // SSO-provisionierte Nutzer haben password_hash = '' — has_password sagt dem
+    // Frontend, ob "Passwort ändern" überhaupt möglich ist, ohne den Hash selbst preiszugeben.
+    const { password_hash, ...safeUser } = user;
+    req.user = { ...safeUser, has_password: !!password_hash };
     next();
   } catch {
     return res.status(401).json({ error: 'Ungültiger Token' });

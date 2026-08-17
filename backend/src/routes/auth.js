@@ -32,7 +32,7 @@ router.post('/login', async (req, res) => {
   const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '8h' });
   try { log('LOGIN', email, 'Login erfolgreich'); } catch {}
   const { password_hash, ...clean } = user;
-  res.json({ token, user: clean });
+  res.json({ token, user: { ...clean, has_password: !!password_hash } });
 });
 
 // GET /me
@@ -55,6 +55,13 @@ router.put('/change-password', authenticate, async (req, res) => {
     return res.status(400).json({ error: 'Neues Passwort muss mindestens 8 Zeichen lang sein' });
   }
   const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  // SSO-provisionierte Nutzer haben keinen lokalen Passwort-Hash (leerer String) —
+  // ohne diesen Check würde bcrypt.compareSync einfach false liefern und der Nutzer
+  // bekäme dieselbe irreführende "Aktuelles Passwort ist falsch"-Meldung wie bei
+  // einem echten Tippfehler. Passwort ändern ist für SSO-Konten kategorisch gesperrt.
+  if (!user.password_hash) {
+    return res.status(403).json({ error: 'Dieses Konto meldet sich per Microsoft SSO an — ein lokales Passwort kann nicht gesetzt werden' });
+  }
   if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
     return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
   }

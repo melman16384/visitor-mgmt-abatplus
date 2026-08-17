@@ -185,9 +185,22 @@ function HostsTab() {
 
 // ---- Change Password Tab ----
 function PasswordTab() {
+  const { user } = useAuth();
   const [form, setForm] = useState({ current: '', newPw: '', confirm: '' });
   const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // SSO-Konten haben keinen lokalen Passwort-Hash — Passwort ändern ist backend-seitig
+  // gesperrt (PUT /auth/change-password liefert 403). Hier gar nicht erst anbieten,
+  // damit niemand die irreführende "falsches Passwort"-Meldung sieht.
+  if (user && !user.has_password) {
+    return (
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+        <h3 className="font-semibold text-gray-800 mb-2">Passwort ändern</h3>
+        <p className="text-sm text-gray-500">Dieses Konto meldet sich per Microsoft SSO an. Ein lokales Passwort gibt es nicht und kann hier nicht gesetzt werden.</p>
+      </div>
+    );
+  }
 
   const save = async (e) => {
     e.preventDefault();
