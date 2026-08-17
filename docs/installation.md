@@ -21,6 +21,7 @@ Diese Anleitung beschreibt die vollständige Erstinstallation auf einem frischen
 11. [Erster Start & Test](#11-erster-start--test)
 12. [Updates einspielen](#12-updates-einspielen)
 13. [Automatisches Backup](#13-automatisches-backup)
+14. [Deinstallation](#14-deinstallation)
 
 ---
 
@@ -550,4 +551,55 @@ Manuelles Backup (z.B. vor einem Update):
 
 ```bash
 sudo -u svc-visitormgmtplus /opt/visitor-mgmt-abatplus/backup.sh
+```
+
+---
+
+## 14. Deinstallation
+
+Das Projekt bringt ein eigenes Deinstallations-Skript mit: `/opt/visitor-mgmt-abatplus/uninstall.sh`. Es fasst nur Artefakte **dieses** Projekts an — pm2-Prozess, Nginx-Site, SSL-Zertifikat, den abatplus-Eintrag im geteilten Backup-Cron, DB + Rolle, den Systembenutzer, pm2-Logs und zuletzt das Projektverzeichnis selbst. Andere Apps auf demselben Server (z.B. `visitor-mgmt`) bleiben unberührt.
+
+```bash
+# Erst ansehen, was passieren würde — ändert nichts:
+sudo /opt/visitor-mgmt-abatplus/uninstall.sh --dry-run
+
+# Interaktiv, mit Rückfrage vor jedem Schritt (empfohlen):
+sudo /opt/visitor-mgmt-abatplus/uninstall.sh
+
+# Ohne Rückfragen — nur wenn wirklich sicher:
+sudo /opt/visitor-mgmt-abatplus/uninstall.sh --yes
+```
+
+Vor dem letzten, größten Schritt (Löschen des Projektverzeichnisses inkl. `.env`, Backups und Uploads) fragt das Skript zusätzlich eine Tipp-Bestätigung (`DEINSTALLIEREN`) ab — auch im `--yes`-Modus **nicht**, dort läuft alles ohne Rückfrage durch.
+
+**Nicht automatisch entfernt** (bewusst — geteilte Datei bzw. externe Systeme):
+- Der `visitor-mgmt-abatplus`-Eintrag in `/opt/ecosystem.config.js` — Datei wird von mehreren Apps auf dem Server genutzt, daher kein automatisches Suchen/Ersetzen; Eintrag manuell löschen.
+- Die Azure App Registration (Azure Portal → Microsoft Entra ID → App-Registrierungen) — falls sie ausschließlich für abat+ angelegt wurde, dort manuell entfernen.
+- Der Cloudflare-DNS-Eintrag für die Domain.
+
+**Manuell, ohne Skript** (falls nur einzelne Schritte gebraucht werden):
+
+```bash
+# pm2-Prozess
+pm2 delete visitor-mgmt-abatplus && pm2 save
+
+# Nginx
+rm -f /etc/nginx/sites-enabled/visitorplus.luwilab.work /etc/nginx/sites-available/visitorplus.luwilab.work
+nginx -t && systemctl reload nginx
+
+# SSL-Zertifikat
+rm -rf /etc/ssl/visitorplus
+
+# Cron-Backup-Zeile (nur die abatplus-Zeile, Datei bleibt für visitor-mgmt bestehen)
+sed -i '\|/opt/visitor-mgmt-abatplus|d' /etc/cron.d/visitor-mgmt-backups
+
+# Datenbank
+sudo -u postgres dropdb --if-exists visitormgmt_abatplus
+sudo -u postgres dropuser --if-exists visitormgmt_abatplus
+
+# Systembenutzer
+userdel svc-visitormgmtplus
+
+# Projektverzeichnis (zuletzt!)
+rm -rf /opt/visitor-mgmt-abatplus
 ```
